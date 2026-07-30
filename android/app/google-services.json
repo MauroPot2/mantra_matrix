@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "445749962946",
+    "project_id": "mantra-matrix-d8b2a",
+    "storage_bucket": "mantra-matrix-d8b2a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:445749962946:android:ca8632c51c7f2b88afb35b",
+        "android_client_info": {
+          "package_name": "com.mauropot.mantra_matrix"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "445749962946-g57lah20i89sd02rrht254ep8s9ete4h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mauropot.mantra_matrix",
+            "certificate_hash": "0eaccb2de50fe5a6c377379927d8b19e832a5b5e"
+          }
+        },
+        {
+          "client_id": "445749962946-4ekslrnet7higgc6mr5cc5vt52t0q0es.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAq6KIKk4RHBf2EJMamMQwt2e_MCUzpaQE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "445749962946-4ekslrnet7higgc6mr5cc5vt52t0q0es.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "445749962946-p5o26pk2fk83hequ1pfcbakeshclhkgd.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.mauropot.mantraMatrix"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

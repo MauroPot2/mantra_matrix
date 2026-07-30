@@ -1,0 +1,24 @@
+name: mantra_matrix
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  cloud_firestore: ^6.7.1
+  firebase_auth: ^6.5.6
+  firebase_core: ^4.12.1
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.3.2
+  google_sign_in: ^7.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
