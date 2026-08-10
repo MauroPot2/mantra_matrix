@@ -1,0 +1,84 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function sessionPath(sessionId) {
+      return /databases/$(database)/documents/auction_sessions/$(sessionId);
+    }
+
+    function sessionExists(sessionId) {
+      return exists(sessionPath(sessionId));
+    }
+
+    function isSessionMember(sessionId) {
+      return signedIn() &&
+        sessionExists(sessionId) &&
+        get(sessionPath(sessionId)).data.member_uids is list &&
+        request.auth.uid in get(sessionPath(sessionId)).data.member_uids;
+    }
+
+    function isSessionOwner(sessionId) {
+      return signedIn() &&
+        sessionExists(sessionId) &&
+        get(sessionPath(sessionId)).data.owner_uid == request.auth.uid;
+    }
+
+    match /users/{uid} {
+      allow read: if isSelf(uid);
+      allow create, update: if isSelf(uid) &&
+        request.resource.data.uid == request.auth.uid;
+      allow delete: if isSelf(uid);
+    }
+
+    // Compatibilità temporanea con le sessioni schema <= 5.
+    // Le nuove aste non dipendono più da questa collezione e nessun client può
+    // modificarla. Potrà essere rimossa una volta migrate/chiuse le aste legacy.
+    match /players/{playerId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /auction_sessions/{sessionId} {
+      allow create: if signedIn() &&
+        request.resource.data.owner_uid == request.auth.uid &&
+        request.resource.data.member_uids is list &&
+        request.auth.uid in request.resource.data.member_uids;
+
+      allow read: if signedIn() &&
+        resource.data.member_uids is list &&
+        request.auth.uid in resource.data.member_uids;
+
+      allow update: if isSessionOwner(sessionId) &&
+        request.resource.data.owner_uid == resource.data.owner_uid &&
+        request.resource.data.member_uids is list &&
+        resource.data.owner_uid in request.resource.data.member_uids;
+
+      allow delete: if isSessionOwner(sessionId);
+
+      match /players/{playerId} {
+        allow read: if isSessionMember(sessionId);
+        allow create, update: if isSessionOwner(sessionId);
+        allow delete: if false;
+      }
+
+      match /events/{eventId} {
+        allow read: if isSessionMember(sessionId);
+        allow create: if isSessionMember(sessionId) &&
+          request.resource.data.created_by_uid == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
