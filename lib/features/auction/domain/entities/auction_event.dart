@@ -19,6 +19,10 @@ class AuctionEvent {
   final String? targetEventId;
   final String? note;
 
+  /// Revisione assegnata dal backend al commit dell'evento.
+  /// Gli eventi precedenti allo schema realtime possono non averla.
+  final int? serverRevision;
+
   const AuctionEvent._({
     required this.id,
     required this.type,
@@ -29,6 +33,7 @@ class AuctionEvent {
     this.clockExtensionSeconds,
     this.targetEventId,
     this.note,
+    this.serverRevision,
   });
 
   bool get isReversion => type == AuctionEventType.eventReverted;
@@ -48,7 +53,6 @@ class AuctionEvent {
     );
   }
 
-  /// Correzione manuale del prezzo. Non estende il countdown.
   factory AuctionEvent.bidChanged({
     required String id,
     required DateTime occurredAt,
@@ -64,8 +68,6 @@ class AuctionEvent {
     );
   }
 
-  /// Rilancio reale verso l'alto. Ogni evento aggiunge una sola estensione al
-  /// countdown, indipendentemente dall'entità dell'aumento di crediti.
   factory AuctionEvent.bidRaised({
     required String id,
     required DateTime occurredAt,
@@ -153,6 +155,7 @@ class AuctionEvent {
         'clock_extension_seconds': clockExtensionSeconds,
       if (targetEventId != null) 'target_event_id': targetEventId,
       if (note != null) 'note': note,
+      if (serverRevision != null) 'server_revision': serverRevision,
     };
   }
 
@@ -179,6 +182,7 @@ class AuctionEvent {
           (json['clock_extension_seconds'] as num?)?.toInt(),
       targetEventId: json['target_event_id']?.toString(),
       note: json['note']?.toString(),
+      serverRevision: (json['server_revision'] as num?)?.toInt(),
     );
   }
 }
