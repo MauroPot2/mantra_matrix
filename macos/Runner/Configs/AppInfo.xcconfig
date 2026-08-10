@@ -4,10 +4,11 @@
 // future. If not, the values below would default to using the project name when this becomes a
 // 'flutter create' template.
 
-// The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = mantra_matrix
+// The application's public name.
+PRODUCT_NAME = Asta Matrix
 
-// The application's bundle identifier
+// The application's bundle identifier. Kept stable during the migration so
+// existing Firebase configuration and signing remain valid.
 PRODUCT_BUNDLE_IDENTIFIER = com.mauropot.mantraMatrix
 
 // The copyright displayed in application information
