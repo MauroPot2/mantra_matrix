@@ -15,6 +15,7 @@ class AuctionConfig {
   final int rosterSize;
   final int minimumBid;
   final int bidDurationSeconds;
+  final int bidExtensionSeconds;
   final AuctionCallOrderMode callOrderMode;
   final Map<MantraRole, int> targetCoverage;
 
@@ -35,6 +36,7 @@ class AuctionConfig {
     required this.rosterSize,
     required this.minimumBid,
     this.bidDurationSeconds = 30,
+    this.bidExtensionSeconds = 5,
     this.callOrderMode = AuctionCallOrderMode.randomAll,
     this.valuationReferenceCredits = 1000,
     this.targetCoverage = const {},
@@ -52,6 +54,7 @@ class AuctionConfig {
          bidDurationSeconds == 0 ||
              (bidDurationSeconds >= 5 && bidDurationSeconds <= 600),
        ),
+       assert(bidExtensionSeconds >= 0 && bidExtensionSeconds <= 60),
        assert(maxStrategicPremium >= 0),
        assert(maxStrategicDiscount >= 0 && maxStrategicDiscount < 1),
        assert(maxPlayerBudgetShare > 0 && maxPlayerBudgetShare <= 1);
@@ -87,6 +90,7 @@ class AuctionConfig {
     int rosterSize = 25,
     int minimumBid = 1,
     int bidDurationSeconds = 30,
+    int bidExtensionSeconds = 5,
     AuctionCallOrderMode callOrderMode = AuctionCallOrderMode.randomAll,
     String primaryFormationName = '4-2-3-1',
     Set<String> secondaryFormationNames = const {'4-3-3', '4-4-2'},
@@ -98,6 +102,7 @@ class AuctionConfig {
       rosterSize: rosterSize,
       minimumBid: minimumBid,
       bidDurationSeconds: bidDurationSeconds,
+      bidExtensionSeconds: bidExtensionSeconds,
       callOrderMode: callOrderMode,
       primaryFormationName: primaryFormationName,
       secondaryFormationNames: Set.unmodifiable(secondaryFormationNames),
@@ -141,6 +146,7 @@ class AuctionConfig {
     int? rosterSize,
     int? minimumBid,
     int? bidDurationSeconds,
+    int? bidExtensionSeconds,
     AuctionCallOrderMode? callOrderMode,
     Map<MantraRole, int>? targetCoverage,
     String? primaryFormationName,
@@ -157,6 +163,7 @@ class AuctionConfig {
       rosterSize: rosterSize ?? this.rosterSize,
       minimumBid: minimumBid ?? this.minimumBid,
       bidDurationSeconds: bidDurationSeconds ?? this.bidDurationSeconds,
+      bidExtensionSeconds: bidExtensionSeconds ?? this.bidExtensionSeconds,
       callOrderMode: callOrderMode ?? this.callOrderMode,
       targetCoverage: targetCoverage ?? this.targetCoverage,
       primaryFormationName: primaryFormationName ?? this.primaryFormationName,
@@ -176,6 +183,7 @@ class AuctionConfig {
       'roster_size': rosterSize,
       'minimum_bid': minimumBid,
       'bid_duration_seconds': bidDurationSeconds,
+      'bid_extension_seconds': bidExtensionSeconds,
       'call_order_mode': callOrderMode.name,
       'target_coverage': {
         for (final entry in targetCoverage.entries) entry.key.name: entry.value,
@@ -194,6 +202,8 @@ class AuctionConfig {
 
   factory AuctionConfig.fromJson(Map<String, dynamic> json) {
     final initialCredits = (json['initial_credits'] as num).toInt();
+    final bidDurationSeconds =
+        (json['bid_duration_seconds'] as num?)?.toInt() ?? 0;
     final rawCoverage = json['target_coverage'];
     final coverage = <MantraRole, int>{};
 
@@ -233,7 +243,12 @@ class AuctionConfig {
       minimumBid: (json['minimum_bid'] as num).toInt(),
       // Le sessioni create prima dell'introduzione del timer restano manuali,
       // evitando una scadenza immediata al primo ripristino.
-      bidDurationSeconds: (json['bid_duration_seconds'] as num?)?.toInt() ?? 0,
+      bidDurationSeconds: bidDurationSeconds,
+      // Le aste temporizzate già salvate ricevono la nuova regola standard;
+      // le sessioni manuali legacy continuano invece a non avere proroghe.
+      bidExtensionSeconds:
+          (json['bid_extension_seconds'] as num?)?.toInt() ??
+          (bidDurationSeconds > 0 ? 5 : 0),
       callOrderMode: AuctionCallOrderMode.values.firstWhere(
         (mode) => mode.name == json['call_order_mode']?.toString(),
         orElse: () => AuctionCallOrderMode.randomAll,

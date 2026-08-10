@@ -24,6 +24,7 @@ void main() {
     expect(restored.departmentBudgetFor(PlayerDepartment.forwards), 205);
     expect(restored.plannedBudgetTotal, 500);
     expect(restored.isDepartmentBudgetPlanBalanced, isTrue);
+    expect(restored.bidExtensionSeconds, 5);
   });
 
   test('una configurazione legacy riceve budget e moduli predefiniti', () {
@@ -38,5 +39,21 @@ void main() {
     expect(restored.primaryFormationName, '4-2-3-1');
     expect(restored.secondaryFormationNames, contains('4-3-3'));
     expect(restored.plannedBudgetTotal, 500);
+    expect(restored.bidExtensionSeconds, 0);
   });
+
+  test(
+    'una configurazione temporizzata esistente riceve la proroga standard',
+    () {
+      final restored = AuctionConfig.fromJson({
+        'initial_credits': 500,
+        'roster_size': 25,
+        'minimum_bid': 1,
+        'bid_duration_seconds': 30,
+      });
+
+      expect(restored.bidDurationSeconds, 30);
+      expect(restored.bidExtensionSeconds, 5);
+    },
+  );
 }

@@ -22,12 +22,12 @@ service cloud.firestore {
 
     function isSessionMemberData(data) {
       return signedIn() &&
-        data.member_uids is list &&
         request.auth.uid in data.member_uids;
     }
 
     function isSessionOwnerData(data) {
-      return signedIn() && data.owner_uid == request.auth.uid;
+      return signedIn() &&
+        data.get('owner_uid', '') == request.auth.uid;
     }
 
     function sessionData(sessionId) {
@@ -134,12 +134,21 @@ service cloud.firestore {
 
       allow create: if signedIn() &&
         request.resource.data.owner_uid == request.auth.uid &&
+        request.resource.data.member_uids is list &&
         isSessionMemberData(request.resource.data) &&
         request.resource.data.member_team_ids[request.auth.uid] is string;
 
-      allow get: if isSessionOwnerData(resource.data) ||
+      // `saveSession` legge prima il documento dentro una transazione. La
+      // lettura del documento ancora inesistente deve quindi essere ammessa,
+      // altrimenti la creazione viene bloccata prima della regola `create`.
+      allow get: if signedIn() && (
+        !exists(
+          /databases/$(database)/documents/auction_sessions/$(sessionId)
+        ) ||
+        isSessionOwnerData(resource.data) ||
         isSessionMemberData(resource.data) ||
-        (signedIn() && resource.data.join_enabled == true);
+        resource.data.get('join_enabled', false) == true
+      );
       allow list: if isSessionOwnerData(resource.data) ||
         isSessionMemberData(resource.data);
 

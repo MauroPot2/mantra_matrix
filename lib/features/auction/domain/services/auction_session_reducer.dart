@@ -78,13 +78,16 @@ class AuctionSessionReducer {
           // esce temporaneamente dalla lista dedicata.
           unsoldPlayerIds.remove(event.playerId);
           activePlayerId = event.playerId;
+          final extensionSeconds = event.teamId == null
+              ? 0
+              : session.config.bidExtensionSeconds;
           activeBid = BidSnapshot(
             playerId: event.playerId!,
             currentBid: event.amount!,
             updatedAt: event.occurredAt,
             sourceEventId: event.id,
             nominationEventId: previousBid.nominationEventId,
-            endsAt: previousBid.endsAt,
+            endsAt: previousBid.endsAt.add(Duration(seconds: extensionSeconds)),
             leadingTeamId: event.teamId ?? previousBid.leadingTeamId,
           );
           break;

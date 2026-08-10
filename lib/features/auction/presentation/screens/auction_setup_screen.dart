@@ -429,6 +429,15 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
             if (value != null) setState(() => _bidDurationSeconds = value);
           },
         ),
+        const SizedBox(height: 8),
+        const ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.more_time_rounded),
+          title: Text('Proroga anti-sniping attiva'),
+          subtitle: Text(
+            'Ogni offerta valida aggiunge automaticamente 5 secondi al timer.',
+          ),
+        ),
         const SizedBox(height: 16),
         Text(
           'Modello di chiamata',

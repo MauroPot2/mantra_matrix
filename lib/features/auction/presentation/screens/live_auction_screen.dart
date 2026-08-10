@@ -617,9 +617,11 @@ class _AuctionCommandPanel extends ConsumerWidget {
     }
 
     final settlementEventId = 'settle_${snapshot.activeBid!.nominationEventId}';
+    final settlementAttemptKey =
+        '$settlementEventId@${snapshot.activeBid!.endsAt.microsecondsSinceEpoch}';
     final wasAlreadySettled =
         state.session!.events.any((event) => event.id == settlementEventId) ||
-        hasAttemptedAutomaticSettlement(settlementEventId);
+        hasAttemptedAutomaticSettlement(settlementAttemptKey);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -633,11 +635,12 @@ class _AuctionCommandPanel extends ConsumerWidget {
           _AuctionTimer(
             bid: snapshot.activeBid!,
             totalSeconds: state.session!.config.bidDurationSeconds,
+            extensionSeconds: state.session!.config.bidExtensionSeconds,
             leadingTeamName: snapshot.activeBid!.leadingTeamId == null
                 ? null
                 : snapshot.teamsById[snapshot.activeBid!.leadingTeamId!]?.name,
             onExpired: state.isOwner && !wasAlreadySettled
-                ? () => onAttemptAutomaticSettlement(settlementEventId)
+                ? () => onAttemptAutomaticSettlement(settlementAttemptKey)
                 : null,
           ),
           const SizedBox(height: 14),
@@ -821,12 +824,14 @@ class _ActivePlayerHero extends StatelessWidget {
 class _AuctionTimer extends StatefulWidget {
   final BidSnapshot bid;
   final int totalSeconds;
+  final int extensionSeconds;
   final String? leadingTeamName;
   final VoidCallback? onExpired;
 
   const _AuctionTimer({
     required this.bid,
     required this.totalSeconds,
+    required this.extensionSeconds,
     required this.leadingTeamName,
     required this.onExpired,
   });
@@ -935,6 +940,16 @@ class _AuctionTimerState extends State<_AuctionTimer> {
                 color: color,
               ),
             ),
+            if (widget.extensionSeconds > 0) ...[
+              const SizedBox(height: 10),
+              Text(
+                '+${widget.extensionSeconds} s per ogni offerta valida',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ],
         ),
       ),

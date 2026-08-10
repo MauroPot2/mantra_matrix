@@ -19,11 +19,10 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
 
   final FirebaseFirestore _firestore;
   final String _currentUid;
+  final Map<String, int> _sessionSchemaVersions = {};
 
-  const FirestoreAuctionSessionRepository(
-    this._firestore, {
-    required String ownerUid,
-  }) : _currentUid = ownerUid;
+  FirestoreAuctionSessionRepository(this._firestore, {required String ownerUid})
+    : _currentUid = ownerUid;
 
   CollectionReference<Map<String, dynamic>> get _sessions =>
       _firestore.collection(_sessionsCollection);
@@ -103,6 +102,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
         }, SetOptions(merge: true));
       }
     });
+    _sessionSchemaVersions[session.id] = _schemaVersion;
   }
 
   @override
@@ -164,22 +164,41 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   @override
   Stream<List<AuctionEvent>> watchEvents({required String sessionId}) {
     final sessionRef = _sessions.doc(sessionId);
+    final cachedSchemaVersion = _sessionSchemaVersions[sessionId];
+    if (cachedSchemaVersion != null) {
+      return _watchEventDocuments(
+        sessionRef,
+        schemaVersion: cachedSchemaVersion,
+      );
+    }
+
+    // Fallback per chi invoca direttamente lo stream senza aver prima creato
+    // o ripristinato la sessione. Nel flusso normale la versione è già in
+    // cache e il listener realtime viene agganciato senza questo round-trip.
     return Stream.fromFuture(sessionRef.get()).asyncExpand((sessionDocument) {
       final schemaVersion =
           (sessionDocument.data()?['schema_version'] as num?)?.toInt() ?? 0;
-      final orderField = schemaVersion >= _schemaVersion
-          ? 'sequence'
-          : 'occurred_at';
-      return sessionRef
-          .collection(_eventsCollection)
-          .orderBy(orderField)
-          .snapshots()
-          .map((snapshot) {
-            return List<AuctionEvent>.unmodifiable(
-              snapshot.docs.map(_eventFromDocument),
-            );
-          });
+      _sessionSchemaVersions[sessionId] = schemaVersion;
+      return _watchEventDocuments(sessionRef, schemaVersion: schemaVersion);
     });
+  }
+
+  Stream<List<AuctionEvent>> _watchEventDocuments(
+    DocumentReference<Map<String, dynamic>> sessionRef, {
+    required int schemaVersion,
+  }) {
+    final orderField = schemaVersion >= _schemaVersion
+        ? 'sequence'
+        : 'occurred_at';
+    return sessionRef
+        .collection(_eventsCollection)
+        .orderBy(orderField)
+        .snapshots()
+        .map((snapshot) {
+          return List<AuctionEvent>.unmodifiable(
+            snapshot.docs.map(_eventFromDocument),
+          );
+        });
   }
 
   @override
@@ -478,6 +497,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     }
 
     final schemaVersion = (data['schema_version'] as num?)?.toInt() ?? 0;
+    _sessionSchemaVersions[document.id] = schemaVersion;
     if (schemaVersion > _schemaVersion) {
       throw AuctionSessionPersistenceException(
         'Sessione creata con uno schema più recente ($schemaVersion).',

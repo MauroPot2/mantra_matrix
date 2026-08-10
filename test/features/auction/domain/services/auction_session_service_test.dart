@@ -269,16 +269,64 @@ void main() {
     expect(liveState.activeBid!.leadingTeamId, 't2');
     expect(
       liveState.activeBid!.endsAt,
-      date(1).add(const Duration(seconds: 30)),
+      date(1).add(const Duration(seconds: 35)),
+    );
+
+    expect(
+      () => service.settleExpiredLot(
+        session,
+        occurredAt: date(1).add(const Duration(seconds: 31)),
+      ),
+      throwsA(isA<AuctionSessionException>()),
     );
 
     session = service.settleExpiredLot(
       session,
-      occurredAt: date(1).add(const Duration(seconds: 31)),
+      occurredAt: date(1).add(const Duration(seconds: 36)),
     );
     final settled = service.snapshot(session);
     expect(settled.playersById['p1']!.draftedByTeamId, 't2');
     expect(settled.playersById['p1']!.purchasePrice, 7);
+  });
+
+  test('ogni rilancio estende di cinque secondi la scadenza condivisa', () {
+    var session = buildSession().copyWith(
+      config: config.copyWith(bidDurationSeconds: 30, bidExtensionSeconds: 5),
+    );
+    session = service.nominatePlayer(
+      session,
+      playerId: 'p1',
+      eventId: 'extension-call',
+      occurredAt: date(1),
+    );
+    session = service.placeBid(
+      session,
+      teamId: 't2',
+      bid: 7,
+      eventId: 'extension-bid-1',
+      occurredAt: date(1).add(const Duration(seconds: 29)),
+    );
+
+    expect(
+      service.snapshot(session).activeBid!.endsAt,
+      date(1).add(const Duration(seconds: 35)),
+    );
+
+    // Il secondo rilancio arriva dopo la scadenza originaria, ma dentro la
+    // proroga ottenuta dalla prima offerta.
+    session = service.placeBid(
+      session,
+      teamId: 't1',
+      bid: 8,
+      eventId: 'extension-bid-2',
+      occurredAt: date(1).add(const Duration(seconds: 32)),
+    );
+
+    expect(service.snapshot(session).currentBid, 8);
+    expect(
+      service.snapshot(session).activeBid!.endsAt,
+      date(1).add(const Duration(seconds: 40)),
+    );
   });
 
   test('timer senza offerte sposta il giocatore tra gli svincolati', () {
