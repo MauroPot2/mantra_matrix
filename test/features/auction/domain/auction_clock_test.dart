@@ -94,9 +94,12 @@ void main() {
         extensionSeconds: 10,
         revision: 3,
         updatedAt: start,
+        controllerInstanceId: 'controller-a',
       );
 
       expect(live.deadline(config), start.add(const Duration(seconds: 25)));
+      expect(live.isControlledBy('controller-a'), isTrue);
+      expect(live.isControlledBy('controller-b'), isFalse);
       expect(
         live.remaining(
           config,
