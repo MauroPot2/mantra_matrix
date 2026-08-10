@@ -7,13 +7,19 @@ class AuctionConfig {
   /// Budget reale della lega.
   final int initialCredits;
 
-  /// Budget sul quale è espresso il valore FVM importato.
-  /// Il listone Fantacalcio usa come riferimento 1000 crediti.
+  /// Budget di riferimento sul quale è espresso il valore base del dataset.
+  /// Permette di scalare dataset costruiti con budget differenti.
   final int valuationReferenceCredits;
 
   final int rosterSize;
   final int minimumBid;
   final Map<MantraRole, int> targetCoverage;
+
+  /// Durata iniziale del countdown per ogni nuova chiamata.
+  final int countdownSeconds;
+
+  /// Secondi aggiunti al countdown per ogni rilancio verso l'alto.
+  final int bidExtensionSeconds;
 
   /// Strategia tattica scelta nel setup.
   final String primaryFormationName;
@@ -33,6 +39,8 @@ class AuctionConfig {
     required this.minimumBid,
     this.valuationReferenceCredits = 1000,
     this.targetCoverage = const {},
+    this.countdownSeconds = 15,
+    this.bidExtensionSeconds = 5,
     this.primaryFormationName = '4-2-3-1',
     this.secondaryFormationNames = const {'4-3-3', '4-4-2'},
     this.departmentBudgets = const {},
@@ -43,6 +51,8 @@ class AuctionConfig {
        assert(valuationReferenceCredits > 0),
        assert(rosterSize > 0),
        assert(minimumBid > 0),
+       assert(countdownSeconds > 0),
+       assert(bidExtensionSeconds >= 0),
        assert(maxStrategicPremium >= 0),
        assert(maxStrategicDiscount >= 0 && maxStrategicDiscount < 1),
        assert(maxPlayerBudgetShare > 0 && maxPlayerBudgetShare <= 1);
@@ -55,7 +65,8 @@ class AuctionConfig {
     return math.max(minimumBid, scaled).toInt();
   }
 
-  int get plannedBudgetTotal => departmentBudgets.values.fold(0, (a, b) => a + b);
+  int get plannedBudgetTotal =>
+      departmentBudgets.values.fold(0, (a, b) => a + b);
 
   bool get isDepartmentBudgetPlanBalanced =>
       departmentBudgets.isNotEmpty && plannedBudgetTotal == initialCredits;
@@ -72,11 +83,13 @@ class AuctionConfig {
         (initialCredits * maxPlayerBudgetShare).round(),
       ).toInt();
 
-  factory AuctionConfig.standardMantra({
+  factory AuctionConfig.standard({
     int initialCredits = 500,
     int valuationReferenceCredits = 1000,
     int rosterSize = 25,
     int minimumBid = 1,
+    int countdownSeconds = 15,
+    int bidExtensionSeconds = 5,
     String primaryFormationName = '4-2-3-1',
     Set<String> secondaryFormationNames = const {'4-3-3', '4-4-2'},
     Map<PlayerDepartment, int>? departmentBudgets,
@@ -86,6 +99,8 @@ class AuctionConfig {
       valuationReferenceCredits: valuationReferenceCredits,
       rosterSize: rosterSize,
       minimumBid: minimumBid,
+      countdownSeconds: countdownSeconds,
+      bidExtensionSeconds: bidExtensionSeconds,
       primaryFormationName: primaryFormationName,
       secondaryFormationNames: Set.unmodifiable(secondaryFormationNames),
       departmentBudgets: Map.unmodifiable(
@@ -105,6 +120,32 @@ class AuctionConfig {
         MantraRole.a: 1,
         MantraRole.pc: 2,
       },
+    );
+  }
+
+  /// Alias mantenuto per non rompere sessioni/test durante la migrazione del
+  /// naming interno. Il prodotto pubblico non dipende da questo nome.
+  factory AuctionConfig.standardMantra({
+    int initialCredits = 500,
+    int valuationReferenceCredits = 1000,
+    int rosterSize = 25,
+    int minimumBid = 1,
+    int countdownSeconds = 15,
+    int bidExtensionSeconds = 5,
+    String primaryFormationName = '4-2-3-1',
+    Set<String> secondaryFormationNames = const {'4-3-3', '4-4-2'},
+    Map<PlayerDepartment, int>? departmentBudgets,
+  }) {
+    return AuctionConfig.standard(
+      initialCredits: initialCredits,
+      valuationReferenceCredits: valuationReferenceCredits,
+      rosterSize: rosterSize,
+      minimumBid: minimumBid,
+      countdownSeconds: countdownSeconds,
+      bidExtensionSeconds: bidExtensionSeconds,
+      primaryFormationName: primaryFormationName,
+      secondaryFormationNames: secondaryFormationNames,
+      departmentBudgets: departmentBudgets,
     );
   }
 
@@ -128,6 +169,8 @@ class AuctionConfig {
     int? rosterSize,
     int? minimumBid,
     Map<MantraRole, int>? targetCoverage,
+    int? countdownSeconds,
+    int? bidExtensionSeconds,
     String? primaryFormationName,
     Set<String>? secondaryFormationNames,
     Map<PlayerDepartment, int>? departmentBudgets,
@@ -142,6 +185,9 @@ class AuctionConfig {
       rosterSize: rosterSize ?? this.rosterSize,
       minimumBid: minimumBid ?? this.minimumBid,
       targetCoverage: targetCoverage ?? this.targetCoverage,
+      countdownSeconds: countdownSeconds ?? this.countdownSeconds,
+      bidExtensionSeconds:
+          bidExtensionSeconds ?? this.bidExtensionSeconds,
       primaryFormationName:
           primaryFormationName ?? this.primaryFormationName,
       secondaryFormationNames:
@@ -162,6 +208,8 @@ class AuctionConfig {
       'valuation_reference_credits': valuationReferenceCredits,
       'roster_size': rosterSize,
       'minimum_bid': minimumBid,
+      'countdown_seconds': countdownSeconds,
+      'bid_extension_seconds': bidExtensionSeconds,
       'target_coverage': {
         for (final entry in targetCoverage.entries)
           entry.key.name: entry.value,
@@ -217,6 +265,10 @@ class AuctionConfig {
           (json['valuation_reference_credits'] as num?)?.toInt() ?? 1000,
       rosterSize: (json['roster_size'] as num).toInt(),
       minimumBid: (json['minimum_bid'] as num).toInt(),
+      countdownSeconds:
+          (json['countdown_seconds'] as num?)?.toInt() ?? 15,
+      bidExtensionSeconds:
+          (json['bid_extension_seconds'] as num?)?.toInt() ?? 5,
       targetCoverage: coverage,
       primaryFormationName:
           json['primary_formation_name']?.toString() ?? '4-2-3-1',
