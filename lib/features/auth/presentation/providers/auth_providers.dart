@@ -6,8 +6,8 @@ import 'package:mantra_matrix/features/auth/domain/repositories/auth_repository.
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return FirebaseAuthRepository(
-    firebaseAuth: ref.watch(firebaseAuthProvider),
-    firestore: ref.watch(firebaseFirestoreProvider),
+    ref.watch(firebaseAuthProvider),
+    ref.watch(firebaseFirestoreProvider),
   );
 });
 
