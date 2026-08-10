@@ -23,9 +23,13 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   final FirebaseFirestore _firestore;
   final String _ownerUid;
 
+  @override
+  final String instanceId;
+
   const FirestoreAuctionSessionRepository(
     this._firestore, {
     required String ownerUid,
+    required this.instanceId,
   }) : _ownerUid = ownerUid;
 
   CollectionReference<Map<String, dynamic>> get _sessions =>
@@ -68,12 +72,14 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       'started_at': null,
       'extension_seconds': 0,
       'revision': 0,
+      'controller_instance_id': instanceId,
       'updated_at': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
     await _savePlayerSnapshot(sessionRef, session.initialPlayers);
     await sessionRef.set(
       {
+        'schema_version': _schemaVersion,
         'player_snapshot_status': _snapshotReady,
         'updated_at': FieldValue.serverTimestamp(),
       },
@@ -113,38 +119,115 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     final sessionRef = _sessions.doc(sessionId);
     final eventRef = sessionRef.collection(_eventsCollection).doc(event.id);
     final liveRef = sessionRef.collection(_liveCollection).doc(_liveDocument);
-    final batch = _firestore.batch();
 
-    batch.set(eventRef, {
-      ...event.toJson(),
-      'schema_version': _schemaVersion,
-      'created_by_uid': _ownerUid,
-      'server_occurred_at': FieldValue.serverTimestamp(),
+    await _firestore.runTransaction((transaction) async {
+      final liveSnapshot = await transaction.get(liveRef);
+      final existingEvent = await transaction.get(eventRef);
+
+      if (existingEvent.exists) return;
+
+      final liveData = liveSnapshot.data();
+      if (!liveSnapshot.exists || liveData == null) {
+        throw const AuctionSessionPersistenceException(
+          'Stato realtime dell’asta non disponibile.',
+        );
+      }
+
+      if (liveData['controller_instance_id']?.toString() != instanceId) {
+        throw const AuctionSessionPersistenceException(
+          'Questo dispositivo è in modalità viewer. Prendi il controllo prima di modificare l’asta.',
+        );
+      }
+
+      _validateLiveTransition(liveData, event);
+
+      final nextRevision =
+          ((liveData['revision'] as num?)?.toInt() ?? 0) + 1;
+
+      transaction.set(eventRef, {
+        ...event.toJson(),
+        'schema_version': _schemaVersion,
+        'server_revision': nextRevision,
+        'created_by_uid': _ownerUid,
+        'controller_instance_id': instanceId,
+        'server_occurred_at': FieldValue.serverTimestamp(),
+      });
+      transaction.set(
+        sessionRef,
+        {
+          'updated_at': FieldValue.serverTimestamp(),
+          'last_event_id': event.id,
+        },
+        SetOptions(merge: true),
+      );
+      transaction.set(
+        liveRef,
+        _livePatchFor(
+          event,
+          snapshotAfterEvent,
+          nextRevision: nextRevision,
+        ),
+        SetOptions(merge: true),
+      );
     });
-    batch.set(
-      sessionRef,
-      {
-        'updated_at': FieldValue.serverTimestamp(),
-        'last_event_id': event.id,
-      },
-      SetOptions(merge: true),
-    );
-    batch.set(
-      liveRef,
-      _livePatchFor(event, snapshotAfterEvent),
-      SetOptions(merge: true),
-    );
+  }
 
-    await batch.commit();
+  void _validateLiveTransition(
+    Map<String, dynamic> liveData,
+    AuctionEvent event,
+  ) {
+    final activePlayerId = liveData['active_player_id']?.toString();
+    final currentBid = (liveData['current_bid'] as num?)?.toInt() ?? 0;
+    final phase = liveData['phase']?.toString();
+
+    switch (event.type) {
+      case AuctionEventType.playerNominated:
+        if (phase != AuctionClockPhase.idle.name || activePlayerId != null) {
+          throw const AuctionSessionPersistenceException(
+            'Esiste già una chiamata attiva su un altro dispositivo.',
+          );
+        }
+        break;
+
+      case AuctionEventType.bidRaised:
+        if (activePlayerId != event.playerId) {
+          throw const AuctionSessionPersistenceException(
+            'La chiamata attiva è cambiata su un altro dispositivo.',
+          );
+        }
+        final bid = event.amount ?? 0;
+        if (bid <= currentBid) {
+          throw AuctionSessionPersistenceException(
+            'Rilancio superato: l’offerta live è già $currentBid crediti.',
+          );
+        }
+        break;
+
+      case AuctionEventType.bidChanged:
+      case AuctionEventType.playerAssigned:
+      case AuctionEventType.playerSkipped:
+      case AuctionEventType.playerMarkedUnavailable:
+        if (activePlayerId != event.playerId) {
+          throw const AuctionSessionPersistenceException(
+            'La chiamata attiva è cambiata su un altro dispositivo.',
+          );
+        }
+        break;
+
+      case AuctionEventType.eventReverted:
+        break;
+    }
   }
 
   Map<String, dynamic> _livePatchFor(
     AuctionEvent event,
-    AuctionSessionSnapshot snapshot,
-  ) {
+    AuctionSessionSnapshot snapshot, {
+    required int nextRevision,
+  }) {
     final common = <String, dynamic>{
       'schema_version': _schemaVersion,
-      'revision': FieldValue.increment(1),
+      'revision': nextRevision,
+      'controller_instance_id': instanceId,
       'updated_at': FieldValue.serverTimestamp(),
     };
 
@@ -201,8 +284,6 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
             'extension_seconds': 0,
           };
         }
-        // Un undo che riapre una chiamata riparte con un countdown completo.
-        // È intenzionale: evita di riaprire una chiamata già scaduta.
         return {
           ...common,
           'phase': AuctionClockPhase.running.name,
@@ -219,16 +300,15 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     return _sessions
         .doc(sessionId)
         .collection(_eventsCollection)
-        .orderBy('occurred_at')
         .snapshots()
         .map((snapshot) {
-          return List<AuctionEvent>.unmodifiable(
-            snapshot.docs.map((document) {
-              final raw = Map<String, dynamic>.from(document.data());
-              raw['id'] ??= document.id;
-              return AuctionEvent.fromJson(raw);
-            }),
-          );
+          final events = snapshot.docs.map((document) {
+            final raw = Map<String, dynamic>.from(document.data());
+            raw['id'] ??= document.id;
+            return AuctionEvent.fromJson(raw);
+          }).toList(growable: false)
+            ..sort(_compareEvents);
+          return List<AuctionEvent>.unmodifiable(events);
         });
   }
 
@@ -246,6 +326,35 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
         });
   }
 
+  @override
+  Future<void> claimControl({required String sessionId}) async {
+    final liveRef = _sessions
+        .doc(sessionId)
+        .collection(_liveCollection)
+        .doc(_liveDocument);
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(liveRef);
+      final data = snapshot.data();
+      if (!snapshot.exists || data == null) {
+        throw const AuctionSessionPersistenceException(
+          'Impossibile acquisire il controllo: stato realtime assente.',
+        );
+      }
+
+      final nextRevision = ((data['revision'] as num?)?.toInt() ?? 0) + 1;
+      transaction.set(
+        liveRef,
+        {
+          'controller_instance_id': instanceId,
+          'revision': nextRevision,
+          'updated_at': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    });
+  }
+
   AuctionLiveState _liveStateFromJson(Map<String, dynamic> data) {
     final phaseName = data['phase']?.toString();
     final phase = AuctionClockPhase.values.firstWhere(
@@ -261,6 +370,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       extensionSeconds: (data['extension_seconds'] as num?)?.toInt() ?? 0,
       revision: (data['revision'] as num?)?.toInt() ?? 0,
       updatedAt: _readNullableDate(data['updated_at']),
+      controllerInstanceId: data['controller_instance_id']?.toString(),
     );
   }
 
@@ -287,7 +397,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     final document = await _sessions.doc(sessionId).get();
     if (!document.exists) return null;
 
-    return _restoreFromDocument(document, legacyPlayers: players);
+    return _restoreAndMigrate(document, legacyPlayers: players);
   }
 
   @override
@@ -315,7 +425,28 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
         return bDate.compareTo(aDate);
       });
 
-    return _restoreFromDocument(documents.first, legacyPlayers: players);
+    return _restoreAndMigrate(documents.first, legacyPlayers: players);
+  }
+
+  Future<RestoredAuctionSession> _restoreAndMigrate(
+    DocumentSnapshot<Map<String, dynamic>> document, {
+    required List<PlayerEntity> legacyPlayers,
+  }) async {
+    final data = document.data();
+    final schemaVersion = (data?['schema_version'] as num?)?.toInt() ?? 0;
+    final restored = await _restoreFromDocument(
+      document,
+      legacyPlayers: legacyPlayers,
+    );
+
+    if (schemaVersion < _schemaVersion) {
+      await saveSession(
+        session: restored.session,
+        myTeamId: restored.myTeamId,
+      );
+    }
+
+    return restored;
   }
 
   @override
@@ -324,33 +455,50 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     required AuctionSessionStatus status,
   }) async {
     final sessionRef = _sessions.doc(sessionId);
-    final batch = _firestore.batch();
-    batch.set(
-      sessionRef,
-      {
-        'status': status.name,
-        'updated_at': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    final liveRef = sessionRef.collection(_liveCollection).doc(_liveDocument);
 
-    if (status != AuctionSessionStatus.live) {
-      batch.set(
-        sessionRef.collection(_liveCollection).doc(_liveDocument),
+    await _firestore.runTransaction((transaction) async {
+      final liveSnapshot = await transaction.get(liveRef);
+      final liveData = liveSnapshot.data();
+      if (!liveSnapshot.exists || liveData == null) {
+        throw const AuctionSessionPersistenceException(
+          'Stato realtime dell’asta non disponibile.',
+        );
+      }
+      if (liveData['controller_instance_id']?.toString() != instanceId) {
+        throw const AuctionSessionPersistenceException(
+          'Solo il dispositivo controller può concludere l’asta.',
+        );
+      }
+
+      transaction.set(
+        sessionRef,
         {
-          'phase': AuctionClockPhase.idle.name,
-          'active_player_id': null,
-          'current_bid': 0,
-          'started_at': null,
-          'extension_seconds': 0,
-          'revision': FieldValue.increment(1),
+          'status': status.name,
           'updated_at': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
-    }
 
-    await batch.commit();
+      if (status != AuctionSessionStatus.live) {
+        final nextRevision =
+            ((liveData['revision'] as num?)?.toInt() ?? 0) + 1;
+        transaction.set(
+          liveRef,
+          {
+            'phase': AuctionClockPhase.idle.name,
+            'active_player_id': null,
+            'current_bid': 0,
+            'started_at': null,
+            'extension_seconds': 0,
+            'revision': nextRevision,
+            'controller_instance_id': instanceId,
+            'updated_at': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+    });
   }
 
   AuctionSessionSummary? _summaryFromDocument(
@@ -423,17 +571,13 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       );
     }
 
-    final eventQuery = await document.reference
-        .collection(_eventsCollection)
-        .orderBy('occurred_at')
-        .get();
-    final events = eventQuery.docs
-        .map((eventDocument) {
-          final raw = Map<String, dynamic>.from(eventDocument.data());
-          raw['id'] ??= eventDocument.id;
-          return AuctionEvent.fromJson(raw);
-        })
-        .toList(growable: false);
+    final eventQuery = await document.reference.collection(_eventsCollection).get();
+    final events = eventQuery.docs.map((eventDocument) {
+      final raw = Map<String, dynamic>.from(eventDocument.data());
+      raw['id'] ??= eventDocument.id;
+      return AuctionEvent.fromJson(raw);
+    }).toList(growable: false)
+      ..sort(_compareEvents);
 
     final session = AuctionSession(
       id: document.id,
@@ -564,6 +708,25 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     return playerIds
         .map((id) => playersById[id]!)
         .toList(growable: false);
+  }
+
+  static int _compareEvents(AuctionEvent a, AuctionEvent b) {
+    final aRevision = a.serverRevision;
+    final bRevision = b.serverRevision;
+
+    if (aRevision != null && bRevision != null) {
+      final byRevision = aRevision.compareTo(bRevision);
+      if (byRevision != 0) return byRevision;
+      return a.id.compareTo(b.id);
+    }
+
+    // Eventi senza revisione appartengono alla storia pre-migrazione e devono
+    // precedere gli eventi creati dopo l'adozione del controller lease.
+    if (aRevision == null && bRevision != null) return -1;
+    if (aRevision != null && bRevision == null) return 1;
+
+    final byDate = a.occurredAt.compareTo(b.occurredAt);
+    return byDate != 0 ? byDate : a.id.compareTo(b.id);
   }
 
   static Map<String, dynamic> _teamToJson(FantasyTeamEntity team) {
