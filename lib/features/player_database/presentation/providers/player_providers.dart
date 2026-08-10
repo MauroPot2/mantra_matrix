@@ -8,7 +8,8 @@ final playerRepositoryProvider = Provider<PlayerRepository>((ref) {
   return FirestorePlayerRepository(ref.watch(firebaseFirestoreProvider));
 });
 
-final allPlayersProvider = FutureProvider<List<PlayerEntity>>((ref) async {
+/// Caricato soltanto come compatibilità per le vecchie sessioni schema <= 5.
+final legacyPlayersProvider = FutureProvider<List<PlayerEntity>>((ref) async {
   final repository = ref.watch(playerRepositoryProvider);
-  return repository.fetchAllPlayers();
+  return repository.fetchLegacyPlayers();
 });
