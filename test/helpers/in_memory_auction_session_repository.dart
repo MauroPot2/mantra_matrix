@@ -1,4 +1,5 @@
 import 'package:mantra_matrix/features/auction/domain/entities/auction_event.dart';
+import 'package:mantra_matrix/features/auction/domain/entities/auction_live_state.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session_summary.dart';
 import 'package:mantra_matrix/features/auction/domain/repositories/auction_session_repository.dart';
@@ -25,6 +26,7 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
   Future<void> appendEvent({
     required String sessionId,
     required AuctionEvent event,
+    required AuctionSessionSnapshot snapshotAfterEvent,
   }) async {
     if (failWrites) throw StateError('write failed');
     final current = sessions[sessionId];
@@ -37,6 +39,17 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
       ),
       myTeamId: current.myTeamId,
     );
+  }
+
+  @override
+  Stream<List<AuctionEvent>> watchEvents({required String sessionId}) {
+    final events = sessions[sessionId]?.session.events ?? const <AuctionEvent>[];
+    return Stream.value(List<AuctionEvent>.unmodifiable(events));
+  }
+
+  @override
+  Stream<AuctionLiveState?> watchLiveState({required String sessionId}) {
+    return const Stream<AuctionLiveState?>.empty();
   }
 
   @override
