@@ -21,6 +21,8 @@ class SharedAuctionClock extends ConsumerStatefulWidget {
 class _SharedAuctionClockState extends ConsumerState<SharedAuctionClock> {
   Timer? _ticker;
   DateTime _now = DateTime.now().toUtc();
+  Duration _serverClockOffset = Duration.zero;
+  int? _calibratedRevision;
 
   @override
   void initState() {
@@ -86,15 +88,25 @@ class _SharedAuctionClockState extends ConsumerState<SharedAuctionClock> {
               );
             }
 
+            _calibrateToServer(live);
+
             return _RunningClock(
               live: live,
               session: widget.session,
-              now: _now,
+              now: _now.add(_serverClockOffset),
             );
           },
         ),
       ),
     );
+  }
+
+  void _calibrateToServer(AuctionLiveState live) {
+    final serverUpdatedAt = live.updatedAt;
+    if (serverUpdatedAt == null || _calibratedRevision == live.revision) return;
+
+    _calibratedRevision = live.revision;
+    _serverClockOffset = serverUpdatedAt.difference(DateTime.now().toUtc());
   }
 }
 
