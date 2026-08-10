@@ -1,6 +1,7 @@
 enum AuctionEventType {
   playerNominated,
   bidChanged,
+  bidRaised,
   playerAssigned,
   playerSkipped,
   playerMarkedUnavailable,
@@ -14,6 +15,7 @@ class AuctionEvent {
   final String? playerId;
   final String? teamId;
   final int? amount;
+  final int? clockExtensionSeconds;
   final String? targetEventId;
   final String? note;
 
@@ -24,6 +26,7 @@ class AuctionEvent {
     this.playerId,
     this.teamId,
     this.amount,
+    this.clockExtensionSeconds,
     this.targetEventId,
     this.note,
   });
@@ -34,15 +37,18 @@ class AuctionEvent {
     required String id,
     required DateTime occurredAt,
     required String playerId,
+    required int startingBid,
   }) {
     return AuctionEvent._(
       id: id,
       type: AuctionEventType.playerNominated,
       occurredAt: occurredAt,
       playerId: playerId,
+      amount: startingBid,
     );
   }
 
+  /// Correzione manuale del prezzo. Non estende il countdown.
   factory AuctionEvent.bidChanged({
     required String id,
     required DateTime occurredAt,
@@ -55,6 +61,25 @@ class AuctionEvent {
       occurredAt: occurredAt,
       playerId: playerId,
       amount: bid,
+    );
+  }
+
+  /// Rilancio reale verso l'alto. Ogni evento aggiunge una sola estensione al
+  /// countdown, indipendentemente dall'entità dell'aumento di crediti.
+  factory AuctionEvent.bidRaised({
+    required String id,
+    required DateTime occurredAt,
+    required String playerId,
+    required int bid,
+    required int clockExtensionSeconds,
+  }) {
+    return AuctionEvent._(
+      id: id,
+      type: AuctionEventType.bidRaised,
+      occurredAt: occurredAt,
+      playerId: playerId,
+      amount: bid,
+      clockExtensionSeconds: clockExtensionSeconds,
     );
   }
 
@@ -124,6 +149,8 @@ class AuctionEvent {
       if (playerId != null) 'player_id': playerId,
       if (teamId != null) 'team_id': teamId,
       if (amount != null) 'amount': amount,
+      if (clockExtensionSeconds != null)
+        'clock_extension_seconds': clockExtensionSeconds,
       if (targetEventId != null) 'target_event_id': targetEventId,
       if (note != null) 'note': note,
     };
@@ -148,6 +175,8 @@ class AuctionEvent {
       playerId: json['player_id']?.toString(),
       teamId: json['team_id']?.toString(),
       amount: (json['amount'] as num?)?.toInt(),
+      clockExtensionSeconds:
+          (json['clock_extension_seconds'] as num?)?.toInt(),
       targetEventId: json['target_event_id']?.toString(),
       note: json['note']?.toString(),
     );
