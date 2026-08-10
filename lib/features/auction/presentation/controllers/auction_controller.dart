@@ -25,6 +25,11 @@ final liveAuctionAdvisorProvider = Provider<LiveAuctionAdvisor>((ref) {
   );
 });
 
+final auctionInstanceIdProvider = Provider<String>((ref) {
+  final nonce = Object();
+  return 'instance_${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}_${identityHashCode(nonce).toRadixString(36)}';
+});
+
 final auctionSessionRepositoryProvider = Provider<AuctionSessionRepository>((ref) {
   final ownerUid = ref.watch(currentUserUidProvider);
   if (ownerUid == null) {
@@ -34,6 +39,7 @@ final auctionSessionRepositoryProvider = Provider<AuctionSessionRepository>((ref
   return FirestoreAuctionSessionRepository(
     ref.watch(firebaseFirestoreProvider),
     ownerUid: ownerUid,
+    instanceId: ref.watch(auctionInstanceIdProvider),
   );
 });
 
@@ -385,12 +391,28 @@ class AuctionController extends Notifier<AuctionUiState> {
     );
   }
 
+  Future<bool> claimControl() async {
+    final session = state.session;
+    if (session == null) return false;
+
+    try {
+      await _repository.claimControl(sessionId: session.id);
+      return true;
+    } on AuctionSessionPersistenceException catch (error) {
+      state = state.copyWith(errorMessage: error.message);
+      return false;
+    } catch (error) {
+      state = state.copyWith(
+        errorMessage: 'Acquisizione controllo non riuscita: $error',
+      );
+      return false;
+    }
+  }
+
   void nominatePlayer(String playerId) {
     _apply((session) => _sessions.nominatePlayer(session, playerId: playerId));
   }
 
-  /// Qualunque aumento rispetto all'offerta corrente è un rilancio reale e
-  /// genera una sola estensione del countdown. Riduzioni/correzioni non lo fanno.
   void setCurrentBid(int bid) {
     final current = state.snapshot?.currentBid;
     if (current == bid) return;
@@ -511,6 +533,7 @@ class AuctionController extends Notifier<AuctionUiState> {
           event: newEvent,
           snapshotAfterEvent: snapshotAfterEvent,
         ),
+        onFailure: (_) => _recoverAuthoritativeSession(updated.id),
       );
     } on AuctionSessionException catch (error) {
       state = state.copyWith(errorMessage: error.message.toString());
@@ -518,6 +541,32 @@ class AuctionController extends Notifier<AuctionUiState> {
       state = state.copyWith(errorMessage: error.message.toString());
     } on ArgumentError catch (error) {
       state = state.copyWith(errorMessage: error.message.toString());
+    }
+  }
+
+  Future<void> _recoverAuthoritativeSession(String sessionId) async {
+    try {
+      await _persistenceTail;
+      if (state.session?.id != sessionId) return;
+      final restored = await _repository.loadSession(
+        sessionId: sessionId,
+        players: const <PlayerEntity>[],
+      );
+      if (restored == null || state.session?.id != sessionId) return;
+
+      final previous = state;
+      state = _derive(
+        restored.session,
+        myTeamId: restored.myTeamId,
+      ).copyWith(
+        restoreStatus: previous.restoreStatus,
+        persistenceStatus: AuctionPersistenceStatus.synced,
+        persistenceError: null,
+        errorMessage: previous.persistenceError,
+        lastPersistedAt: DateTime.now().toUtc(),
+      );
+    } catch (_) {
+      // Manteniamo il messaggio di errore della persistenza originale.
     }
   }
 
@@ -562,11 +611,7 @@ class AuctionController extends Notifier<AuctionUiState> {
       for (final event in session.events) event.id: event,
       for (final event in remoteEvents) event.id: event,
     };
-    final merged = byId.values.toList(growable: false)
-      ..sort((a, b) {
-        final byDate = a.occurredAt.compareTo(b.occurredAt);
-        return byDate != 0 ? byDate : a.id.compareTo(b.id);
-      });
+    final merged = byId.values.toList(growable: false)..sort(_compareEvents);
 
     if (_sameEventSequence(session.events, merged)) return;
 
@@ -588,10 +633,28 @@ class AuctionController extends Notifier<AuctionUiState> {
     }
   }
 
+  int _compareEvents(AuctionEvent a, AuctionEvent b) {
+    final aRevision = a.serverRevision;
+    final bRevision = b.serverRevision;
+
+    if (aRevision != null && bRevision != null) {
+      final byRevision = aRevision.compareTo(bRevision);
+      return byRevision != 0 ? byRevision : a.id.compareTo(b.id);
+    }
+    if (aRevision == null && bRevision != null) return -1;
+    if (aRevision != null && bRevision == null) return 1;
+
+    final byDate = a.occurredAt.compareTo(b.occurredAt);
+    return byDate != 0 ? byDate : a.id.compareTo(b.id);
+  }
+
   bool _sameEventSequence(List<AuctionEvent> a, List<AuctionEvent> b) {
     if (a.length != b.length) return false;
     for (var index = 0; index < a.length; index++) {
-      if (a[index].id != b[index].id) return false;
+      if (a[index].id != b[index].id ||
+          a[index].serverRevision != b[index].serverRevision) {
+        return false;
+      }
     }
     return true;
   }
@@ -603,9 +666,10 @@ class AuctionController extends Notifier<AuctionUiState> {
     if (subscription != null) unawaited(subscription.cancel());
   }
 
-  /// Le scritture vengono serializzate: la sessione viene creata prima del
-  /// primo evento e due azioni consecutive non possono sorpassarsi in rete.
-  Future<void> _schedulePersistence(Future<void> Function() operation) {
+  Future<void> _schedulePersistence(
+    Future<void> Function() operation, {
+    void Function(Object error)? onFailure,
+  }) {
     state = state.copyWith(
       persistenceStatus: AuctionPersistenceStatus.pending,
       persistenceError: null,
@@ -630,6 +694,7 @@ class AuctionController extends Notifier<AuctionUiState> {
             persistenceStatus: AuctionPersistenceStatus.failed,
             persistenceError: 'Salvataggio non riuscito: $error',
           );
+          onFailure?.call(error);
         })
         .whenComplete(() {
           _pendingPersistence.remove(tracked);
