@@ -7,179 +7,47 @@ class FormationEngine {
   static const List<MantraFormation> officialFormations = [
     MantraFormation(
       name: '3-4-3',
-      slots: [
-        _por,
-        _dc,
-        _dc,
-        _dcOrB,
-        _e,
-        _mOrC,
-        _c,
-        _e,
-        _wOrA,
-        _aOrPc,
-        _wOrA,
-      ],
+      slots: [_por, _dc, _dc, _dcOrB, _e, _mOrC, _c, _e, _wOrA, _aOrPc, _wOrA],
     ),
     MantraFormation(
       name: '3-4-1-2',
-      slots: [
-        _por,
-        _dc,
-        _dc,
-        _dcOrB,
-        _e,
-        _mOrC,
-        _c,
-        _e,
-        _t,
-        _aOrPc,
-        _aOrPc,
-      ],
+      slots: [_por, _dc, _dc, _dcOrB, _e, _mOrC, _c, _e, _t, _aOrPc, _aOrPc],
     ),
     MantraFormation(
       name: '3-4-2-1',
-      slots: [
-        _por,
-        _dc,
-        _dc,
-        _dcOrB,
-        _eOrW,
-        _m,
-        _mOrC,
-        _e,
-        _t,
-        _tOrA,
-        _aOrPc,
-      ],
+      slots: [_por, _dc, _dc, _dcOrB, _eOrW, _m, _mOrC, _e, _t, _tOrA, _aOrPc],
     ),
     MantraFormation(
       name: '3-5-2',
-      slots: [
-        _por,
-        _dc,
-        _dc,
-        _dcOrB,
-        _eOrW,
-        _mOrC,
-        _m,
-        _c,
-        _e,
-        _aOrPc,
-        _aOrPc,
-      ],
+      slots: [_por, _dc, _dc, _dcOrB, _eOrW, _mOrC, _m, _c, _e, _aOrPc, _aOrPc],
     ),
     MantraFormation(
       name: '3-5-1-1',
-      slots: [
-        _por,
-        _dc,
-        _dc,
-        _dcOrB,
-        _eOrW,
-        _m,
-        _c,
-        _m,
-        _eOrW,
-        _tOrA,
-        _aOrPc,
-      ],
+      slots: [_por, _dc, _dc, _dcOrB, _eOrW, _m, _c, _m, _eOrW, _tOrA, _aOrPc],
     ),
     MantraFormation(
       name: '4-3-3',
-      slots: [
-        _por,
-        _dd,
-        _dc,
-        _dc,
-        _ds,
-        _mOrC,
-        _m,
-        _c,
-        _wOrA,
-        _aOrPc,
-        _wOrA,
-      ],
+      slots: [_por, _dd, _dc, _dc, _ds, _mOrC, _m, _c, _wOrA, _aOrPc, _wOrA],
     ),
     MantraFormation(
       name: '4-3-1-2',
-      slots: [
-        _por,
-        _dd,
-        _dc,
-        _dc,
-        _ds,
-        _mOrC,
-        _m,
-        _c,
-        _t,
-        _tOrAOrPc,
-        _aOrPc,
-      ],
+      slots: [_por, _dd, _dc, _dc, _ds, _mOrC, _m, _c, _t, _tOrAOrPc, _aOrPc],
     ),
     MantraFormation(
       name: '4-4-2',
-      slots: [
-        _por,
-        _dd,
-        _dc,
-        _dc,
-        _ds,
-        _eOrW,
-        _mOrC,
-        _c,
-        _e,
-        _aOrPc,
-        _aOrPc,
-      ],
+      slots: [_por, _dd, _dc, _dc, _ds, _eOrW, _mOrC, _c, _e, _aOrPc, _aOrPc],
     ),
     MantraFormation(
       name: '4-1-4-1',
-      slots: [
-        _por,
-        _dd,
-        _dc,
-        _dc,
-        _ds,
-        _m,
-        _eOrW,
-        _cOrT,
-        _t,
-        _w,
-        _aOrPc,
-      ],
+      slots: [_por, _dd, _dc, _dc, _ds, _m, _eOrW, _cOrT, _t, _w, _aOrPc],
     ),
     MantraFormation(
       name: '4-4-1-1',
-      slots: [
-        _por,
-        _dd,
-        _dc,
-        _dc,
-        _ds,
-        _eOrW,
-        _m,
-        _c,
-        _eOrW,
-        _tOrA,
-        _aOrPc,
-      ],
+      slots: [_por, _dd, _dc, _dc, _ds, _eOrW, _m, _c, _eOrW, _tOrA, _aOrPc],
     ),
     MantraFormation(
       name: '4-2-3-1',
-      slots: [
-        _por,
-        _dd,
-        _dc,
-        _dc,
-        _ds,
-        _m,
-        _mOrC,
-        _wOrT,
-        _t,
-        _wOrA,
-        _aOrPc,
-      ],
+      slots: [_por, _dd, _dc, _dc, _ds, _m, _mOrC, _wOrT, _t, _wOrA, _aOrPc],
     ),
   ];
 
@@ -195,7 +63,6 @@ class FormationEngine {
     });
     return analyses;
   }
-
 
   MantraFormation? formationByName(String name) {
     for (final formation in officialFormations) {
@@ -233,7 +100,8 @@ class FormationEngine {
 
     final primaryBefore = beforeByName[primaryFormationName];
     final primaryAfter = afterByName[primaryFormationName];
-    final primaryUnlocked = primaryBefore != null &&
+    final primaryUnlocked =
+        primaryBefore != null &&
         primaryAfter != null &&
         !primaryBefore.isPlayable &&
         primaryAfter.isPlayable;
@@ -348,46 +216,19 @@ class FormationEngine {
   }
 }
 
-const _por = MantraFormationSlot(
-  label: 'POR',
-  acceptedRoles: {MantraRole.por},
-);
-const _dc = MantraFormationSlot(
-  label: 'DC',
-  acceptedRoles: {MantraRole.dc},
-);
+const _por = MantraFormationSlot(label: 'POR', acceptedRoles: {MantraRole.por});
+const _dc = MantraFormationSlot(label: 'DC', acceptedRoles: {MantraRole.dc});
 const _dcOrB = MantraFormationSlot(
   label: 'DC/B',
   acceptedRoles: {MantraRole.dc, MantraRole.b},
 );
-const _dd = MantraFormationSlot(
-  label: 'DD',
-  acceptedRoles: {MantraRole.dd},
-);
-const _ds = MantraFormationSlot(
-  label: 'DS',
-  acceptedRoles: {MantraRole.ds},
-);
-const _e = MantraFormationSlot(
-  label: 'E',
-  acceptedRoles: {MantraRole.e},
-);
-const _m = MantraFormationSlot(
-  label: 'M',
-  acceptedRoles: {MantraRole.m},
-);
-const _c = MantraFormationSlot(
-  label: 'C',
-  acceptedRoles: {MantraRole.c},
-);
-const _t = MantraFormationSlot(
-  label: 'T',
-  acceptedRoles: {MantraRole.t},
-);
-const _w = MantraFormationSlot(
-  label: 'W',
-  acceptedRoles: {MantraRole.w},
-);
+const _dd = MantraFormationSlot(label: 'DD', acceptedRoles: {MantraRole.dd});
+const _ds = MantraFormationSlot(label: 'DS', acceptedRoles: {MantraRole.ds});
+const _e = MantraFormationSlot(label: 'E', acceptedRoles: {MantraRole.e});
+const _m = MantraFormationSlot(label: 'M', acceptedRoles: {MantraRole.m});
+const _c = MantraFormationSlot(label: 'C', acceptedRoles: {MantraRole.c});
+const _t = MantraFormationSlot(label: 'T', acceptedRoles: {MantraRole.t});
+const _w = MantraFormationSlot(label: 'W', acceptedRoles: {MantraRole.w});
 const _mOrC = MantraFormationSlot(
   label: 'M/C',
   acceptedRoles: {MantraRole.m, MantraRole.c},

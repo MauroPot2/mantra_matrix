@@ -58,14 +58,16 @@ class PlayerCatalogImportService {
       );
     }
 
-    return rawRecords.map((record) {
-      if (record is! Map) {
-        throw const PlayerCatalogImportException(
-          'Ogni giocatore deve essere rappresentato da un oggetto JSON.',
-        );
-      }
-      return Map<String, dynamic>.from(record);
-    }).toList(growable: false);
+    return rawRecords
+        .map((record) {
+          if (record is! Map) {
+            throw const PlayerCatalogImportException(
+              'Ogni giocatore deve essere rappresentato da un oggetto JSON.',
+            );
+          }
+          return Map<String, dynamic>.from(record);
+        })
+        .toList(growable: false);
   }
 
   List<Map<String, dynamic>> _decodeDelimited(String source) {
@@ -83,14 +85,19 @@ class PlayerCatalogImportService {
     final rows = lines.map((line) => _parseRow(line, delimiter)).toList();
     final headers = rows.first.map(_normalizeHeader).toList(growable: false);
 
-    return rows.skip(1).map((row) {
-      final record = <String, dynamic>{};
-      for (var index = 0; index < headers.length; index++) {
-        if (headers[index].isEmpty) continue;
-        record[headers[index]] = index < row.length ? row[index].trim() : '';
-      }
-      return record;
-    }).toList(growable: false);
+    return rows
+        .skip(1)
+        .map((row) {
+          final record = <String, dynamic>{};
+          for (var index = 0; index < headers.length; index++) {
+            if (headers[index].isEmpty) continue;
+            record[headers[index]] = index < row.length
+                ? row[index].trim()
+                : '';
+          }
+          return record;
+        })
+        .toList(growable: false);
   }
 
   List<PlayerModel> _buildPlayers(List<Map<String, dynamic>> records) {

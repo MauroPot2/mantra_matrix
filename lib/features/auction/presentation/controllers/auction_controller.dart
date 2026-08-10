@@ -31,7 +31,9 @@ final auctionCallOrderServiceProvider = Provider((ref) {
   return const AuctionCallOrderService();
 });
 
-final auctionSessionRepositoryProvider = Provider<AuctionSessionRepository>((ref) {
+final auctionSessionRepositoryProvider = Provider<AuctionSessionRepository>((
+  ref,
+) {
   final ownerUid = ref.watch(currentUserUidProvider);
   if (ownerUid == null) {
     throw StateError('È necessario accedere prima di usare le aste.');
@@ -282,10 +284,7 @@ class AuctionController extends Notifier<AuctionUiState> {
         return false;
       }
 
-      state = _derive(
-        restored.session,
-        myTeamId: restored.myTeamId,
-      ).copyWith(
+      state = _derive(restored.session, myTeamId: restored.myTeamId).copyWith(
         restoreStatus: AuctionRestoreStatus.completed,
         persistenceStatus: AuctionPersistenceStatus.synced,
         persistenceError: null,
@@ -353,10 +352,7 @@ class AuctionController extends Notifier<AuctionUiState> {
         return;
       }
 
-      state = _derive(
-        restored.session,
-        myTeamId: restored.myTeamId,
-      ).copyWith(
+      state = _derive(restored.session, myTeamId: restored.myTeamId).copyWith(
         restoreStatus: AuctionRestoreStatus.completed,
         persistenceStatus: AuctionPersistenceStatus.synced,
         persistenceError: null,
@@ -425,7 +421,8 @@ class AuctionController extends Notifier<AuctionUiState> {
       return openSession(sessionId: sessionId, players: players);
     } on TimeoutException {
       state = state.copyWith(
-        errorMessage: 'L’ingresso nell’asta ha impiegato troppo tempo. Riprova.',
+        errorMessage:
+            'L’ingresso nell’asta ha impiegato troppo tempo. Riprova.',
       );
       return false;
     } on AuctionSessionPersistenceException catch (error) {
@@ -458,13 +455,7 @@ class AuctionController extends Notifier<AuctionUiState> {
       );
       return;
     }
-    _apply(
-      (session) => _sessions.placeBid(
-        session,
-        teamId: teamId,
-        bid: bid,
-      ),
-    );
+    _apply((session) => _sessions.placeBid(session, teamId: teamId, bid: bid));
   }
 
   void settleExpiredLot() {
@@ -489,9 +480,7 @@ class AuctionController extends Notifier<AuctionUiState> {
 
   void assignActivePlayer(String teamId) {
     if (!_requireOwner()) return;
-    _apply(
-      (session) => _sessions.assignActivePlayer(session, teamId: teamId),
-    );
+    _apply((session) => _sessions.assignActivePlayer(session, teamId: teamId));
   }
 
   void skipActivePlayer() {
@@ -502,10 +491,7 @@ class AuctionController extends Notifier<AuctionUiState> {
   void markActivePlayerUnavailable({String? note}) {
     if (!_requireOwner()) return;
     _apply(
-      (session) => _sessions.markActivePlayerUnavailable(
-        session,
-        note: note,
-      ),
+      (session) => _sessions.markActivePlayerUnavailable(session, note: note),
     );
   }
 
@@ -678,18 +664,12 @@ class AuctionController extends Notifier<AuctionUiState> {
     }
   }
 
-  AuctionUiState _derive(
-    AuctionSession session, {
-    required String myTeamId,
-  }) {
+  AuctionUiState _derive(AuctionSession session, {required String myTeamId}) {
     final snapshot = _sessions.snapshot(session);
     AuctionRecommendation? recommendation;
 
     if (snapshot.activePlayer != null) {
-      recommendation = _advisor.evaluate(
-        session: session,
-        myTeamId: myTeamId,
-      );
+      recommendation = _advisor.evaluate(session: session, myTeamId: myTeamId);
     }
 
     final currentUid = ref.read(currentUserUidProvider);
@@ -698,7 +678,8 @@ class AuctionController extends Notifier<AuctionUiState> {
       snapshot: snapshot,
       recommendation: recommendation,
       myTeamId: myTeamId,
-      isOwner: currentUid == null ||
+      isOwner:
+          currentUid == null ||
           session.ownerUid.isEmpty ||
           session.ownerUid == currentUid,
     );
@@ -710,67 +691,73 @@ class AuctionController extends Notifier<AuctionUiState> {
     _eventSubscription = _repository
         .watchEvents(sessionId: sessionId)
         .listen(
-      (events) {
-        final current = state.session;
-        final myTeamId = state.myTeamId;
-        if (current == null || current.id != sessionId || myTeamId == null) {
-          return;
-        }
-        if (_sameEvents(events, current.events)) return;
+          (events) {
+            final current = state.session;
+            final myTeamId = state.myTeamId;
+            if (current == null ||
+                current.id != sessionId ||
+                myTeamId == null) {
+              return;
+            }
+            if (_sameEvents(events, current.events)) return;
 
-        final previous = state;
-        state = _derive(
-          current.copyWith(events: events),
-          myTeamId: myTeamId,
-        ).copyWith(
-          restoreStatus: previous.restoreStatus,
-          persistenceStatus: AuctionPersistenceStatus.synced,
-          persistenceError: null,
-          lastPersistedAt: DateTime.now().toUtc(),
+            final previous = state;
+            state =
+                _derive(
+                  current.copyWith(events: events),
+                  myTeamId: myTeamId,
+                ).copyWith(
+                  restoreStatus: previous.restoreStatus,
+                  persistenceStatus: AuctionPersistenceStatus.synced,
+                  persistenceError: null,
+                  lastPersistedAt: DateTime.now().toUtc(),
+                );
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            final message = 'Sincronizzazione live non riuscita: $error';
+            state = state.copyWith(
+              persistenceStatus: AuctionPersistenceStatus.failed,
+              persistenceError: message,
+              errorMessage: message,
+            );
+          },
         );
-      },
-      onError: (Object error, StackTrace stackTrace) {
-        final message = 'Sincronizzazione live non riuscita: $error';
-        state = state.copyWith(
-          persistenceStatus: AuctionPersistenceStatus.failed,
-          persistenceError: message,
-          errorMessage: message,
-        );
-      },
-    );
     _statusSubscription = _repository
         .watchStatus(sessionId: sessionId)
         .listen(
-      (status) {
-        final current = state.session;
-        final myTeamId = state.myTeamId;
-        if (current == null || current.id != sessionId || myTeamId == null) {
-          return;
-        }
-        if (current.status == status) return;
+          (status) {
+            final current = state.session;
+            final myTeamId = state.myTeamId;
+            if (current == null ||
+                current.id != sessionId ||
+                myTeamId == null) {
+              return;
+            }
+            if (current.status == status) return;
 
-        final previous = state;
-        state = _derive(
-          current.copyWith(status: status),
-          myTeamId: myTeamId,
-        ).copyWith(
-          restoreStatus: previous.restoreStatus,
-          persistenceStatus: AuctionPersistenceStatus.synced,
-          lastPersistedAt: DateTime.now().toUtc(),
-          errorMessage: status == AuctionSessionStatus.completed
-              ? 'Il creatore ha concluso l’asta.'
-              : previous.errorMessage,
+            final previous = state;
+            state =
+                _derive(
+                  current.copyWith(status: status),
+                  myTeamId: myTeamId,
+                ).copyWith(
+                  restoreStatus: previous.restoreStatus,
+                  persistenceStatus: AuctionPersistenceStatus.synced,
+                  lastPersistedAt: DateTime.now().toUtc(),
+                  errorMessage: status == AuctionSessionStatus.completed
+                      ? 'Il creatore ha concluso l’asta.'
+                      : previous.errorMessage,
+                );
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            final message = 'Stato sessione non sincronizzato: $error';
+            state = state.copyWith(
+              persistenceStatus: AuctionPersistenceStatus.failed,
+              persistenceError: message,
+              errorMessage: message,
+            );
+          },
         );
-      },
-      onError: (Object error, StackTrace stackTrace) {
-        final message = 'Stato sessione non sincronizzato: $error';
-        state = state.copyWith(
-          persistenceStatus: AuctionPersistenceStatus.failed,
-          persistenceError: message,
-          errorMessage: message,
-        );
-      },
-    );
   }
 
   bool _requireOwner() {

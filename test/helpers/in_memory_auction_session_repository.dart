@@ -12,8 +12,8 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
   final List<AuctionEvent> appendedEvents = [];
   final Map<String, StreamController<List<AuctionEvent>>> _eventControllers =
       {};
-  final Map<String, StreamController<AuctionSessionStatus>>
-      _statusControllers = {};
+  final Map<String, StreamController<AuctionSessionStatus>> _statusControllers =
+      {};
   bool failWrites = false;
 
   @override
@@ -55,9 +55,7 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
       myTeamId: current.myTeamId,
     );
     _eventControllers[sessionId]?.add(
-      List<AuctionEvent>.unmodifiable(
-        sessions[sessionId]!.session.events,
-      ),
+      List<AuctionEvent>.unmodifiable(sessions[sessionId]!.session.events),
     );
   }
 
@@ -85,25 +83,28 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
 
   @override
   Stream<List<AuctionSessionSummary>> watchOwnedSessions() {
-    final summaries = sessions.values.map((item) {
-      final session = item.session;
-      return AuctionSessionSummary(
-        id: session.id,
-        name: session.name,
-        status: session.status,
-        createdAt: session.createdAt,
-        updatedAt: session.createdAt,
-        myTeamId: item.myTeamId,
-        teamCount: session.initialTeams.length,
-        initialCredits: session.config.initialCredits,
-        rosterSize: session.config.rosterSize,
-        isOwner: true,
-        isShared: session.isShared,
-        joinCode: session.joinCode,
-        memberCount: session.memberTeamIds.length,
-      );
-    }).toList(growable: false)
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final summaries =
+        sessions.values
+            .map((item) {
+              final session = item.session;
+              return AuctionSessionSummary(
+                id: session.id,
+                name: session.name,
+                status: session.status,
+                createdAt: session.createdAt,
+                updatedAt: session.createdAt,
+                myTeamId: item.myTeamId,
+                teamCount: session.initialTeams.length,
+                initialCredits: session.config.initialCredits,
+                rosterSize: session.config.rosterSize,
+                isOwner: true,
+                isShared: session.isShared,
+                joinCode: session.joinCode,
+                memberCount: session.memberTeamIds.length,
+              );
+            })
+            .toList(growable: false)
+          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return Stream.value(List.unmodifiable(summaries));
   }
 
@@ -142,14 +143,11 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
   Future<RestoredAuctionSession?> loadLatestActiveSession({
     required List<PlayerEntity> players,
   }) async {
-    final active = sessions.values
-        .where(
-          (item) => item.session.status == AuctionSessionStatus.live,
-        )
-        .toList(growable: false)
-      ..sort(
-        (a, b) => b.session.createdAt.compareTo(a.session.createdAt),
-      );
+    final active =
+        sessions.values
+            .where((item) => item.session.status == AuctionSessionStatus.live)
+            .toList(growable: false)
+          ..sort((a, b) => b.session.createdAt.compareTo(a.session.createdAt));
     return active.isEmpty ? null : active.first;
   }
 

@@ -64,7 +64,8 @@ class AuctionConfig {
     return math.max(minimumBid, scaled).toInt();
   }
 
-  int get plannedBudgetTotal => departmentBudgets.values.fold(0, (a, b) => a + b);
+  int get plannedBudgetTotal =>
+      departmentBudgets.values.fold(0, (a, b) => a + b);
 
   bool get isDepartmentBudgetPlanBalanced =>
       departmentBudgets.isNotEmpty && plannedBudgetTotal == initialCredits;
@@ -76,10 +77,9 @@ class AuctionConfig {
     return departmentBudgets[department] ?? 0;
   }
 
-  int get maxPlayerBudget => math.max(
-        minimumBid,
-        (initialCredits * maxPlayerBudgetShare).round(),
-      ).toInt();
+  int get maxPlayerBudget => math
+      .max(minimumBid, (initialCredits * maxPlayerBudgetShare).round())
+      .toInt();
 
   factory AuctionConfig.standardMantra({
     int initialCredits = 500,
@@ -159,17 +159,13 @@ class AuctionConfig {
       bidDurationSeconds: bidDurationSeconds ?? this.bidDurationSeconds,
       callOrderMode: callOrderMode ?? this.callOrderMode,
       targetCoverage: targetCoverage ?? this.targetCoverage,
-      primaryFormationName:
-          primaryFormationName ?? this.primaryFormationName,
+      primaryFormationName: primaryFormationName ?? this.primaryFormationName,
       secondaryFormationNames:
           secondaryFormationNames ?? this.secondaryFormationNames,
       departmentBudgets: departmentBudgets ?? this.departmentBudgets,
-      maxStrategicPremium:
-          maxStrategicPremium ?? this.maxStrategicPremium,
-      maxStrategicDiscount:
-          maxStrategicDiscount ?? this.maxStrategicDiscount,
-      maxPlayerBudgetShare:
-          maxPlayerBudgetShare ?? this.maxPlayerBudgetShare,
+      maxStrategicPremium: maxStrategicPremium ?? this.maxStrategicPremium,
+      maxStrategicDiscount: maxStrategicDiscount ?? this.maxStrategicDiscount,
+      maxPlayerBudgetShare: maxPlayerBudgetShare ?? this.maxPlayerBudgetShare,
     );
   }
 
@@ -182,8 +178,7 @@ class AuctionConfig {
       'bid_duration_seconds': bidDurationSeconds,
       'call_order_mode': callOrderMode.name,
       'target_coverage': {
-        for (final entry in targetCoverage.entries)
-          entry.key.name: entry.value,
+        for (final entry in targetCoverage.entries) entry.key.name: entry.value,
       },
       'primary_formation_name': primaryFormationName,
       'secondary_formation_names': secondaryFormationNames.toList(),
@@ -238,8 +233,7 @@ class AuctionConfig {
       minimumBid: (json['minimum_bid'] as num).toInt(),
       // Le sessioni create prima dell'introduzione del timer restano manuali,
       // evitando una scadenza immediata al primo ripristino.
-      bidDurationSeconds:
-          (json['bid_duration_seconds'] as num?)?.toInt() ?? 0,
+      bidDurationSeconds: (json['bid_duration_seconds'] as num?)?.toInt() ?? 0,
       callOrderMode: AuctionCallOrderMode.values.firstWhere(
         (mode) => mode.name == json['call_order_mode']?.toString(),
         orElse: () => AuctionCallOrderMode.randomAll,

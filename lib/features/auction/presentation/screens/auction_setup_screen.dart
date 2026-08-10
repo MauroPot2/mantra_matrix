@@ -13,14 +13,10 @@ import 'package:mantra_matrix/features/player_database/domain/entities/player_en
 class AuctionSetupScreen extends ConsumerStatefulWidget {
   final List<PlayerEntity> players;
 
-  const AuctionSetupScreen({
-    required this.players,
-    super.key,
-  });
+  const AuctionSetupScreen({required this.players, super.key});
 
   @override
-  ConsumerState<AuctionSetupScreen> createState() =>
-      _AuctionSetupScreenState();
+  ConsumerState<AuctionSetupScreen> createState() => _AuctionSetupScreenState();
 }
 
 class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
@@ -73,10 +69,7 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nuova asta'),
-        actions: const [
-          AuthUserMenu(),
-          SizedBox(width: 8),
-        ],
+        actions: const [AuthUserMenu(), SizedBox(width: 8)],
       ),
       body: SafeArea(
         child: LayoutBuilder(
@@ -182,7 +175,8 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
                           secondaryFormations: _secondaryFormations,
                           budgets: {
                             for (final department in PlayerDepartment.values)
-                              department: int.tryParse(
+                              department:
+                                  int.tryParse(
                                     _budgetControllers[department]?.text ?? '',
                                   ) ??
                                   0,
@@ -334,8 +328,8 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
     final count = requestedCount < 0
         ? 0
         : requestedCount > 20
-            ? 20
-            : requestedCount;
+        ? 20
+        : requestedCount;
     while (_teamNameControllers.length < count) {
       _teamNameControllers.add(TextEditingController());
     }
@@ -441,17 +435,24 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
           style: Theme.of(context).textTheme.labelLarge,
         ),
         const SizedBox(height: 6),
-        for (final mode in AuctionCallOrderMode.values)
-          RadioListTile<AuctionCallOrderMode>(
-            contentPadding: EdgeInsets.zero,
-            value: mode,
-            groupValue: _callOrderMode,
-            onChanged: (value) {
-              if (value != null) setState(() => _callOrderMode = value);
-            },
-            title: Text(mode.label),
-            subtitle: Text(mode.description),
+        RadioGroup<AuctionCallOrderMode>(
+          groupValue: _callOrderMode,
+          onChanged: (value) {
+            if (value != null) setState(() => _callOrderMode = value);
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final mode in AuctionCallOrderMode.values)
+                RadioListTile<AuctionCallOrderMode>(
+                  contentPadding: EdgeInsets.zero,
+                  value: mode,
+                  title: Text(mode.label),
+                  subtitle: Text(mode.description),
+                ),
+            ],
           ),
+        ),
       ],
     );
   }
@@ -489,8 +490,8 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
                   color: balanced
                       ? Colors.green.shade500
                       : total > credits
-                          ? theme.colorScheme.error
-                          : theme.colorScheme.primary,
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.primary,
                 ),
               ),
             ),
@@ -502,8 +503,8 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
                 color: balanced
                     ? Colors.green.shade500
                     : total > credits
-                        ? theme.colorScheme.error
-                        : null,
+                    ? theme.colorScheme.error
+                    : null,
               ),
             ),
           ],
@@ -520,10 +521,7 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
   }) {
     return TextFormField(
       controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-      ),
+      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
       validator: validator,
     );
   }
@@ -540,10 +538,7 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
       controller: controller,
       keyboardType: TextInputType.number,
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-      ),
+      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
       onChanged: onChanged,
       validator: (value) {
         final parsed = int.tryParse(value?.trim() ?? '');
@@ -564,11 +559,10 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
   }
 
   int get _budgetTotal => PlayerDepartment.values.fold(
-        0,
-        (total, department) =>
-            total +
-            (int.tryParse(_budgetControllers[department]?.text ?? '') ?? 0),
-      );
+    0,
+    (total, department) =>
+        total + (int.tryParse(_budgetControllers[department]?.text ?? '') ?? 0),
+  );
 
   void _applyAutomaticBudgets() {
     final credits = int.tryParse(_creditsController.text) ?? 500;
@@ -607,7 +601,9 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
         ),
     ];
 
-    ref.read(auctionControllerProvider.notifier).startSession(
+    ref
+        .read(auctionControllerProvider.notifier)
+        .startSession(
           sessionName: _auctionNameController.text.trim(),
           myTeamId: myTeamId,
           config: AuctionConfig.standardMantra(

@@ -36,9 +36,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     required AuctionSession session,
     required String myTeamId,
   }) async {
-    final ownerUid = session.ownerUid.isEmpty
-        ? _currentUid
-        : session.ownerUid;
+    final ownerUid = session.ownerUid.isEmpty ? _currentUid : session.ownerUid;
     final memberTeamIds = session.memberTeamIds.isEmpty
         ? {_currentUid: myTeamId}
         : session.memberTeamIds;
@@ -96,17 +94,13 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       transaction.set(sessionRef, data, SetOptions(merge: true));
 
       if (inviteRef != null) {
-        transaction.set(
-          inviteRef,
-          {
-            'session_id': session.id,
-            'owner_uid': ownerUid,
-            'session_name': session.name,
-            'enabled': true,
-            'created_at': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
+        transaction.set(inviteRef, {
+          'session_id': session.id,
+          'owner_uid': ownerUid,
+          'session_name': session.name,
+          'enabled': true,
+          'created_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
       }
     });
   }
@@ -159,15 +153,11 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       }
 
       transaction.set(eventRef, eventData);
-      transaction.set(
-        sessionRef,
-        {
-          'updated_at': FieldValue.serverTimestamp(),
-          'last_event_id': event.id,
-          'last_event_sequence': nextSequence,
-        },
-        SetOptions(merge: true),
-      );
+      transaction.set(sessionRef, {
+        'updated_at': FieldValue.serverTimestamp(),
+        'last_event_id': event.id,
+        'last_event_sequence': nextSequence,
+      }, SetOptions(merge: true));
     });
   }
 
@@ -185,10 +175,10 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
           .orderBy(orderField)
           .snapshots()
           .map((snapshot) {
-        return List<AuctionEvent>.unmodifiable(
-          snapshot.docs.map(_eventFromDocument),
-        );
-      });
+            return List<AuctionEvent>.unmodifiable(
+              snapshot.docs.map(_eventFromDocument),
+            );
+          });
     });
   }
 
@@ -215,21 +205,21 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     var ownerDocuments =
         <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
     late final StreamSubscription<QuerySnapshot<Map<String, dynamic>>>
-        memberSubscription;
+    memberSubscription;
     late final StreamSubscription<QuerySnapshot<Map<String, dynamic>>>
-        ownerSubscription;
+    ownerSubscription;
 
     void emit() {
-      final documents = <String,
-          QueryDocumentSnapshot<Map<String, dynamic>>>{
+      final documents = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{
         ...ownerDocuments,
         ...memberDocuments,
       };
-      final sessions = documents.values
-          .map(_summaryFromDocument)
-          .whereType<AuctionSessionSummary>()
-          .toList(growable: false)
-        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      final sessions =
+          documents.values
+              .map(_summaryFromDocument)
+              .whereType<AuctionSessionSummary>()
+              .toList(growable: false)
+            ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       controller.add(List<AuctionSessionSummary>.unmodifiable(sessions));
     }
 
@@ -242,20 +232,20 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
           .where('member_uids', arrayContains: _currentUid)
           .snapshots()
           .listen((snapshot) {
-        memberDocuments = {
-          for (final document in snapshot.docs) document.id: document,
-        };
-        emit();
-      }, onError: addError);
+            memberDocuments = {
+              for (final document in snapshot.docs) document.id: document,
+            };
+            emit();
+          }, onError: addError);
       ownerSubscription = _sessions
           .where('owner_uid', isEqualTo: _currentUid)
           .snapshots()
           .listen((snapshot) {
-        ownerDocuments = {
-          for (final document in snapshot.docs) document.id: document,
-        };
-        emit();
-      }, onError: addError);
+            ownerDocuments = {
+              for (final document in snapshot.docs) document.id: document,
+            };
+            emit();
+          }, onError: addError);
     };
     controller.onCancel = () async {
       await memberSubscription.cancel();
@@ -265,9 +255,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   }
 
   @override
-  Future<AuctionJoinPreview> loadJoinPreview({
-    required String joinCode,
-  }) async {
+  Future<AuctionJoinPreview> loadJoinPreview({required String joinCode}) async {
     final normalizedCode = _normalizeJoinCode(joinCode);
     final invite = await _invites.doc(normalizedCode).get();
     final inviteData = invite.data();
@@ -298,9 +286,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       sessionName: data['name']?.toString() ?? 'Asta Mantra',
       joinCode: normalizedCode,
       teams: _readTeams(data['initial_teams']),
-      claimedTeamIds: _readStringMap(
-        data['member_team_ids'],
-      ).values.toSet(),
+      claimedTeamIds: _readStringMap(data['member_team_ids']).values.toSet(),
     );
   }
 
@@ -383,13 +369,9 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
           .where('member_uids', arrayContains: _currentUid)
           .limit(50)
           .get(),
-      _sessions
-          .where('owner_uid', isEqualTo: _currentUid)
-          .limit(50)
-          .get(),
+      _sessions.where('owner_uid', isEqualTo: _currentUid).limit(50).get(),
     ]);
-    final documents = <String,
-        QueryDocumentSnapshot<Map<String, dynamic>>>{
+    final documents = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{
       for (final query in queries)
         for (final document in query.docs) document.id: document,
     };
@@ -417,24 +399,20 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     final sessionRef = _sessions.doc(sessionId);
     final session = await sessionRef.get();
     final data = session.data();
-    await sessionRef.set(
-      {
-        'status': status.name,
-        'join_enabled': status == AuctionSessionStatus.live &&
-            data?['join_enabled'] == true,
-        'updated_at': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    await sessionRef.set({
+      'status': status.name,
+      'join_enabled':
+          status == AuctionSessionStatus.live && data?['join_enabled'] == true,
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
     final joinCode = data?['join_code']?.toString();
     if (status == AuctionSessionStatus.completed &&
         joinCode != null &&
         joinCode.isNotEmpty) {
-      await _invites.doc(joinCode).set(
-        {'enabled': false},
-        SetOptions(merge: true),
-      );
+      await _invites.doc(joinCode).set({
+        'enabled': false,
+      }, SetOptions(merge: true));
     }
   }
 
@@ -465,15 +443,15 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       status: _readStatus(data['status']),
       createdAt: createdAt,
       updatedAt: updatedAt,
-      myTeamId: memberTeamIds[_currentUid] ??
-          (ownerUid == _currentUid
-              ? data['my_team_id']?.toString() ?? ''
-              : ''),
+      myTeamId:
+          memberTeamIds[_currentUid] ??
+          (ownerUid == _currentUid ? data['my_team_id']?.toString() ?? '' : ''),
       teamCount: initialTeams is List ? initialTeams.length : 0,
       initialCredits: (config['initial_credits'] as num?)?.toInt() ?? 0,
       rosterSize: (config['roster_size'] as num?)?.toInt() ?? 0,
       isOwner: ownerUid == _currentUid,
-      isShared: data['join_enabled'] == true ||
+      isShared:
+          data['join_enabled'] == true ||
           data['join_code']?.toString().isNotEmpty == true,
       joinCode: data['join_code']?.toString() ?? '',
       memberCount: memberUids.isEmpty ? 1 : memberUids.length,
@@ -509,10 +487,10 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     final initialPlayers = _readInitialPlayers(data, fallbackPlayers: players);
     final initialTeams = _readTeams(data['initial_teams']);
     final memberTeamIds = _readStringMap(data['member_team_ids']);
-    final myTeamId = memberTeamIds[_currentUid] ??
+    final myTeamId =
+        memberTeamIds[_currentUid] ??
         (ownerUid == _currentUid ? data['my_team_id']?.toString() : null);
-    if (myTeamId == null ||
-        !initialTeams.any((team) => team.id == myTeamId)) {
+    if (myTeamId == null || !initialTeams.any((team) => team.id == myTeamId)) {
       throw const AuctionSessionPersistenceException(
         'La squadra personale della sessione non è valida.',
       );
@@ -555,14 +533,16 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   }) {
     final snapshot = data['initial_players'];
     if (snapshot is List && snapshot.isNotEmpty) {
-      return snapshot.map((rawPlayer) {
-        if (rawPlayer is! Map) {
-          throw const AuctionSessionPersistenceException(
-            'Snapshot giocatori non valido.',
-          );
-        }
-        return PlayerModel.fromJson(Map<String, dynamic>.from(rawPlayer));
-      }).toList(growable: false);
+      return snapshot
+          .map((rawPlayer) {
+            if (rawPlayer is! Map) {
+              throw const AuctionSessionPersistenceException(
+                'Snapshot giocatori non valido.',
+              );
+            }
+            return PlayerModel.fromJson(Map<String, dynamic>.from(rawPlayer));
+          })
+          .toList(growable: false);
     }
 
     final playerIds = _readStringList(data['initial_player_ids']);
@@ -607,19 +587,21 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
         'Le squadre salvate non sono valide.',
       );
     }
-    return rawTeams.map((rawTeam) {
-      if (rawTeam is! Map) {
-        throw const AuctionSessionPersistenceException(
-          'Una squadra salvata non è valida.',
-        );
-      }
-      final team = Map<String, dynamic>.from(rawTeam);
-      return FantasyTeamEntity(
-        id: team['id'].toString(),
-        name: team['name'].toString(),
-        creditsRemaining: (team['credits_remaining'] as num).toInt(),
-      );
-    }).toList(growable: false);
+    return rawTeams
+        .map((rawTeam) {
+          if (rawTeam is! Map) {
+            throw const AuctionSessionPersistenceException(
+              'Una squadra salvata non è valida.',
+            );
+          }
+          final team = Map<String, dynamic>.from(rawTeam);
+          return FantasyTeamEntity(
+            id: team['id'].toString(),
+            name: team['name'].toString(),
+            creditsRemaining: (team['credits_remaining'] as num).toInt(),
+          );
+        })
+        .toList(growable: false);
   }
 
   static List<String> _readStringList(Object? value) {

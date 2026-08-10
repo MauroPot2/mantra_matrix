@@ -17,9 +17,7 @@ abstract final class MantraMatrixTheme {
       seedColor: _seed,
       brightness: Brightness.dark,
     ).copyWith(surface: const Color(0xFF11182A));
-    return _theme(scheme).copyWith(
-      scaffoldBackgroundColor: _darkCanvas,
-    );
+    return _theme(scheme).copyWith(scaffoldBackgroundColor: _darkCanvas);
   }
 
   static ThemeData _theme(ColorScheme scheme) {
@@ -41,7 +39,9 @@ abstract final class MantraMatrixTheme {
         color: scheme.surfaceContainerLow,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(22),
-          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.55)),
+          side: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.55),
+          ),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -80,9 +80,7 @@ abstract final class MantraMatrixTheme {
         ),
       ),
       chipTheme: ChipThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       dividerTheme: DividerThemeData(
         color: scheme.outlineVariant.withValues(alpha: 0.55),

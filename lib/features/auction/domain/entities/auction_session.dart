@@ -112,14 +112,14 @@ class AuctionSessionSnapshot {
     required this.lastReversibleEvent,
   }) : playersById = Map<String, PlayerEntity>.unmodifiable(playersById),
        teamsById = Map<String, FantasyTeamEntity>.unmodifiable(teamsById),
-       assignmentsByPlayerId =
-           Map<String, RosterAssignment>.unmodifiable(assignmentsByPlayerId),
+       assignmentsByPlayerId = Map<String, RosterAssignment>.unmodifiable(
+         assignmentsByPlayerId,
+       ),
        revertedEventIds = Set<String>.unmodifiable(revertedEventIds),
        unsoldPlayerIds = List<String>.unmodifiable(unsoldPlayerIds);
 
-  PlayerEntity? get activePlayer => activePlayerId == null
-      ? null
-      : playersById[activePlayerId];
+  PlayerEntity? get activePlayer =>
+      activePlayerId == null ? null : playersById[activePlayerId];
 
   int get currentBid => activeBid?.currentBid ?? 0;
 

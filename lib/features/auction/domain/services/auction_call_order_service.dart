@@ -16,9 +16,7 @@ class AuctionCallOrderService {
       AuctionCallOrderMode.randomByRole => _randomByRole(players, seed),
       AuctionCallOrderMode.alphabeticalByRole => _alphabeticalByRole(players),
     };
-    return List<String>.unmodifiable(
-      ordered.map((player) => player.id),
-    );
+    return List<String>.unmodifiable(ordered.map((player) => player.id));
   }
 
   List<PlayerEntity> _randomAll(List<PlayerEntity> players, int seed) {
@@ -29,10 +27,11 @@ class AuctionCallOrderService {
     final random = Random(seed);
     final result = <PlayerEntity>[];
     for (final role in MantraRole.values) {
-      final group = players
-          .where((player) => _primaryRole(player) == role)
-          .toList(growable: true)
-        ..shuffle(random);
+      final group =
+          players
+              .where((player) => _primaryRole(player) == role)
+              .toList(growable: true)
+            ..shuffle(random);
       result.addAll(group);
     }
     return result;
@@ -46,8 +45,8 @@ class AuctionCallOrderService {
           .compareTo(MantraRole.values.indexOf(_primaryRole(b)));
       if (roleComparison != 0) return roleComparison;
       final nameComparison = a.name.toLowerCase().compareTo(
-            b.name.toLowerCase(),
-          );
+        b.name.toLowerCase(),
+      );
       return nameComparison != 0 ? nameComparison : a.id.compareTo(b.id);
     });
     return result;

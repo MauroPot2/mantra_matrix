@@ -15,8 +15,9 @@ final allPlayersProvider = FutureProvider<List<PlayerEntity>>((ref) async {
   return repository.fetchAllPlayers();
 });
 
-final playerCatalogMetadataProvider =
-    FutureProvider<PlayerCatalogMetadata?>((ref) async {
+final playerCatalogMetadataProvider = FutureProvider<PlayerCatalogMetadata?>((
+  ref,
+) async {
   return ref.watch(playerRepositoryProvider).fetchCatalogMetadata();
 });
 

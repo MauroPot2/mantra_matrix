@@ -54,21 +54,20 @@ class StatisticalEvidence {
   int get percentileRounded => (percentile * 100).round();
 
   String get metricSourceLabel => switch (metricSource) {
-        StatisticalMetricSource.vorp => 'VORP',
-        StatisticalMetricSource.expectedPoints => 'Punti attesi',
-        StatisticalMetricSource.adjustedPer90 => 'xG/xA per 90 corretti',
-        StatisticalMetricSource.insufficientData => 'Dati insufficienti',
-      };
+    StatisticalMetricSource.vorp => 'VORP',
+    StatisticalMetricSource.expectedPoints => 'Punti attesi',
+    StatisticalMetricSource.adjustedPer90 => 'xG/xA per 90 corretti',
+    StatisticalMetricSource.insufficientData => 'Dati insufficienti',
+  };
 
   String get qualityLabel => switch (qualityBand) {
-        StatisticalQualityBand.belowAverage => 'Sotto la media',
-        StatisticalQualityBand.average => 'In linea con i comparabili',
-        StatisticalQualityBand.slightlyAboveAverage =>
-          'Leggermente sopra la media',
-        StatisticalQualityBand.goodAdvantage => 'Buon vantaggio statistico',
-        StatisticalQualityBand.strongAdvantage => 'Vantaggio statistico forte',
-        StatisticalQualityBand.elite => 'Profilo statistico élite',
-      };
+    StatisticalQualityBand.belowAverage => 'Sotto la media',
+    StatisticalQualityBand.average => 'In linea con i comparabili',
+    StatisticalQualityBand.slightlyAboveAverage => 'Leggermente sopra la media',
+    StatisticalQualityBand.goodAdvantage => 'Buon vantaggio statistico',
+    StatisticalQualityBand.strongAdvantage => 'Vantaggio statistico forte',
+    StatisticalQualityBand.elite => 'Profilo statistico élite',
+  };
 
   String get reliabilityLabel {
     if (overallReliability >= 0.85) return 'Alta';

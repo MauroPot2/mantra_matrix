@@ -68,26 +68,29 @@ class RoleMarketEngine {
     required List<PlayerEntity> catalogPlayers,
     String? candidateId,
   }) {
-    final catalog = _uniquePlayers(catalogPlayers)
-        .where((player) => player.roles.contains(role))
-        .toList(growable: false)
-      ..sort(_comparePlayers);
+    final catalog =
+        _uniquePlayers(catalogPlayers)
+            .where((player) => player.roles.contains(role))
+            .toList(growable: false)
+          ..sort(_comparePlayers);
 
-    final available = _uniquePlayers(availablePlayers)
-        .where(
-          (player) =>
-              player.status == DraftStatus.available &&
-              player.roles.contains(role),
-        )
-        .toList(growable: false)
-      ..sort(_comparePlayers);
+    final available =
+        _uniquePlayers(availablePlayers)
+            .where(
+              (player) =>
+                  player.status == DraftStatus.available &&
+                  player.roles.contains(role),
+            )
+            .toList(growable: false)
+          ..sort(_comparePlayers);
 
     if (catalog.isEmpty) {
       return RoleMarketAvailability(
         role: role,
         remainingPlayers: available.length,
-        remainingAlternatives:
-            available.where((player) => player.id != candidateId).length,
+        remainingAlternatives: available
+            .where((player) => player.id != candidateId)
+            .length,
         remainingTopPlayers: 0,
         remainingTopAlternatives: 0,
         catalogPlayers: 0,
@@ -111,19 +114,22 @@ class RoleMarketEngine {
         .map((player) => player.id)
         .toSet();
 
-    final remainingTop = available
-        .where((player) => topIds.contains(player.id))
-        .toList(growable: false)
-      ..sort(_comparePlayers);
+    final remainingTop =
+        available
+            .where((player) => topIds.contains(player.id))
+            .toList(growable: false)
+          ..sort(_comparePlayers);
 
     return RoleMarketAvailability(
       role: role,
       remainingPlayers: available.length,
-      remainingAlternatives:
-          available.where((player) => player.id != candidateId).length,
+      remainingAlternatives: available
+          .where((player) => player.id != candidateId)
+          .length,
       remainingTopPlayers: remainingTop.length,
-      remainingTopAlternatives:
-          remainingTop.where((player) => player.id != candidateId).length,
+      remainingTopAlternatives: remainingTop
+          .where((player) => player.id != candidateId)
+          .length,
       catalogPlayers: catalog.length,
       catalogTopPlayers: topIds.length,
       topCutoffCatalogValue: cutoff,

@@ -15,9 +15,7 @@ class AuctionSessionException implements Exception {
 class AuctionSessionService {
   final AuctionSessionReducer reducer;
 
-  const AuctionSessionService({
-    this.reducer = const AuctionSessionReducer(),
-  });
+  const AuctionSessionService({this.reducer = const AuctionSessionReducer()});
 
   AuctionSessionSnapshot snapshot(AuctionSession session) {
     return reducer.reduce(session);
@@ -171,11 +169,7 @@ class AuctionSessionService {
     final eventId = 'settle_${activeBid.nominationEventId}';
     final leadingTeamId = activeBid.leadingTeamId;
     if (leadingTeamId == null) {
-      return skipActivePlayer(
-        session,
-        eventId: eventId,
-        occurredAt: timestamp,
-      );
+      return skipActivePlayer(session, eventId: eventId, occurredAt: timestamp);
     }
     return assignActivePlayer(
       session,
@@ -207,9 +201,7 @@ class AuctionSessionService {
       throw AuctionSessionException('Squadra $teamId inesistente.');
     }
     if (team.slotsRemaining(session.config) <= 0) {
-      throw AuctionSessionException(
-        'La rosa di ${team.name} è già completa.',
-      );
+      throw AuctionSessionException('La rosa di ${team.name} è già completa.');
     }
 
     final finalPrice = price ?? state.currentBid;

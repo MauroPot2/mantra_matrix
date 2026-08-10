@@ -46,8 +46,9 @@ class AuthUiState {
 
 const _unset = Object();
 
-final authControllerProvider =
-    NotifierProvider<AuthController, AuthUiState>(AuthController.new);
+final authControllerProvider = NotifierProvider<AuthController, AuthUiState>(
+  AuthController.new,
+);
 
 class AuthController extends Notifier<AuthUiState> {
   @override
@@ -79,10 +80,9 @@ class AuthController extends Notifier<AuthUiState> {
     state = const AuthUiState(activeOperation: AuthOperation.emailSignIn);
 
     try {
-      await ref.read(authRepositoryProvider).signInWithEmailAndPassword(
-            email: email,
-            password: password,
-          );
+      await ref
+          .read(authRepositoryProvider)
+          .signInWithEmailAndPassword(email: email, password: password);
       state = const AuthUiState();
     } on AuthOperationException catch (error) {
       state = AuthUiState(errorMessage: error.message);
@@ -101,7 +101,9 @@ class AuthController extends Notifier<AuthUiState> {
     state = const AuthUiState(activeOperation: AuthOperation.registration);
 
     try {
-      await ref.read(authRepositoryProvider).registerWithEmailAndPassword(
+      await ref
+          .read(authRepositoryProvider)
+          .registerWithEmailAndPassword(
             displayName: displayName,
             email: email,
             password: password,
@@ -155,10 +157,7 @@ class AuthController extends Notifier<AuthUiState> {
 
   void clearFeedback() {
     if (state.errorMessage != null || state.successMessage != null) {
-      state = state.copyWith(
-        errorMessage: null,
-        successMessage: null,
-      );
+      state = state.copyWith(errorMessage: null, successMessage: null);
     }
   }
 }

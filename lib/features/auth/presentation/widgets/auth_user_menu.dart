@@ -55,10 +55,7 @@ class AuthUserMenu extends ConsumerWidget {
             constraints: const BoxConstraints(minWidth: 220),
             child: ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: _UserAvatar(
-                photoUrl: user.photoURL,
-                initials: initials,
-              ),
+              leading: _UserAvatar(photoUrl: user.photoURL, initials: initials),
               title: Text(name == null || name.isEmpty ? 'Account' : name),
               subtitle: Text(user.email ?? ''),
             ),

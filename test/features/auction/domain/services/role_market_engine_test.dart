@@ -8,11 +8,7 @@ void main() {
   test('mantiene stabile la fascia top sul catalogo iniziale', () {
     final catalog = [
       for (var index = 0; index < 20; index++)
-        player(
-          id: 'pc-$index',
-          role: MantraRole.pc,
-          basePrice: 100 - index,
-        ),
+        player(id: 'pc-$index', role: MantraRole.pc, basePrice: 100 - index),
     ];
     final available = catalog
         .where((candidate) => candidate.id != 'pc-0')
@@ -34,17 +30,13 @@ void main() {
     expect(result.topCutoffCatalogValue, 98);
   });
 
-
   test('espone i ruoli nell’ordine Mantra previsto dalla UI', () {
     final result = engine.analyzeAllRoles(
       availablePlayers: const [],
       catalogPlayers: const [],
     );
 
-    expect(
-      result.map((market) => market.role),
-      RoleMarketEngine.displayOrder,
-    );
+    expect(result.map((market) => market.role), RoleMarketEngine.displayOrder);
   });
 
   test('restituisce i nomi dei top rimasti ordinati per FVM', () {
@@ -66,10 +58,10 @@ void main() {
       catalogPlayers: catalog,
     );
 
-    expect(
-      result.remainingTopPlayerEntries.map((player) => player.id),
-      ['top-1', 'top-3'],
-    );
+    expect(result.remainingTopPlayerEntries.map((player) => player.id), [
+      'top-1',
+      'top-3',
+    ]);
     expect(result.remainingTopPlayers, 2);
     expect(result.isTopPlayer('top-1'), isTrue);
     expect(result.isTopPlayer('normal-1'), isFalse);
@@ -118,11 +110,15 @@ void main() {
 
     expect(result, hasLength(2));
     expect(
-      result.firstWhere((market) => market.role == MantraRole.a).remainingPlayers,
+      result
+          .firstWhere((market) => market.role == MantraRole.a)
+          .remainingPlayers,
       2,
     );
     expect(
-      result.firstWhere((market) => market.role == MantraRole.pc).remainingPlayers,
+      result
+          .firstWhere((market) => market.role == MantraRole.pc)
+          .remainingPlayers,
       3,
     );
   });

@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:mantra_matrix/features/auth/domain/repositories/auth_repository.dart';
 
@@ -11,13 +10,11 @@ class FirebaseAuthRepository implements AuthRepository {
 
   bool _googleInitialized = false;
 
-  FirebaseAuthRepository({
-    required FirebaseAuth firebaseAuth,
-    required FirebaseFirestore firestore,
+  FirebaseAuthRepository(
+    this._firebaseAuth,
+    this._firestore, {
     GoogleSignIn? googleSignIn,
-  }) : _firebaseAuth = firebaseAuth,
-       _firestore = firestore,
-       _googleSignIn = googleSignIn ?? GoogleSignIn.instance;
+  }) : _googleSignIn = googleSignIn ?? GoogleSignIn.instance;
 
   @override
   User? get currentUser => _firebaseAuth.currentUser;
@@ -109,11 +106,10 @@ class FirebaseAuthRepository implements AuthRepository {
     required String password,
   }) async {
     try {
-      final userCredential = await _firebaseAuth
-          .createUserWithEmailAndPassword(
-            email: _normalizeEmail(email),
-            password: password,
-          );
+      final userCredential = await _firebaseAuth.createUserWithEmailAndPassword(
+        email: _normalizeEmail(email),
+        password: password,
+      );
 
       final trimmedName = displayName.trim();
       final createdUser = userCredential.user;
@@ -125,10 +121,7 @@ class FirebaseAuthRepository implements AuthRepository {
       final refreshedCredentialUser = _firebaseAuth.currentUser;
       if (refreshedCredentialUser != null) {
         try {
-          await _saveUserProfile(
-            refreshedCredentialUser,
-            isNewUser: true,
-          );
+          await _saveUserProfile(refreshedCredentialUser, isNewUser: true);
         } on FirebaseException {
           // La registrazione Auth è già riuscita. Il profilo verrà
           // riallineato al prossimo accesso se Firestore non è disponibile.
@@ -150,9 +143,7 @@ class FirebaseAuthRepository implements AuthRepository {
   Future<void> sendPasswordResetEmail({required String email}) async {
     try {
       await _firebaseAuth.setLanguageCode('it');
-      await _firebaseAuth.sendPasswordResetEmail(
-        email: _normalizeEmail(email),
-      );
+      await _firebaseAuth.sendPasswordResetEmail(email: _normalizeEmail(email));
     } on FirebaseAuthException catch (error) {
       // Non riveliamo se l'indirizzo esiste. Manteniamo però gli errori che
       // indicano un problema reale di configurazione, formato o connettività.
@@ -184,10 +175,7 @@ class FirebaseAuthRepository implements AuthRepository {
     }
   }
 
-  Future<void> _saveUserProfile(
-    User user, {
-    required bool isNewUser,
-  }) {
+  Future<void> _saveUserProfile(User user, {required bool isNewUser}) {
     final data = <String, dynamic>{
       'uid': user.uid,
       'display_name': user.displayName,
@@ -204,10 +192,10 @@ class FirebaseAuthRepository implements AuthRepository {
       data['created_at'] = FieldValue.serverTimestamp();
     }
 
-    return _firestore.collection('users').doc(user.uid).set(
-      data,
-      SetOptions(merge: true),
-    );
+    return _firestore
+        .collection('users')
+        .doc(user.uid)
+        .set(data, SetOptions(merge: true));
   }
 
   @override
@@ -249,9 +237,10 @@ class FirebaseAuthRepository implements AuthRepository {
         'Configurazione Google non valida. Controlla package name, SHA e google-services.json.',
       GoogleSignInExceptionCode.uiUnavailable =>
         'La schermata Google Sign-In non è disponibile sul dispositivo.',
-      _ => error.description == null || error.description!.trim().isEmpty
-          ? 'Google Sign-In non riuscito (${error.code.name}).'
-          : error.description!,
+      _ =>
+        error.description == null || error.description!.trim().isEmpty
+            ? 'Google Sign-In non riuscito (${error.code.name}).'
+            : error.description!,
     };
   }
 
@@ -262,10 +251,10 @@ class FirebaseAuthRepository implements AuthRepository {
       'email-already-in-use' =>
         'Esiste già un account registrato con questa email.',
       'invalid-email' => 'Inserisci un indirizzo email valido.',
-      'invalid-credential' || 'wrong-password' || 'user-not-found' =>
-        'Email o password non corretti.',
-      'weak-password' =>
-        'La password è troppo debole. Usa almeno 8 caratteri.',
+      'invalid-credential' ||
+      'wrong-password' ||
+      'user-not-found' => 'Email o password non corretti.',
+      'weak-password' => 'La password è troppo debole. Usa almeno 8 caratteri.',
       'missing-password' => 'Inserisci la password.',
       'operation-not-allowed' =>
         'Questo metodo di accesso non è abilitato nella Console Firebase.',

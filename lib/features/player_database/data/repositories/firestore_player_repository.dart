@@ -24,10 +24,7 @@ class FirestorePlayerRepository implements PlayerRepository {
       if (document.data()['active'] == false) continue;
       try {
         players.add(
-          PlayerModel.fromJson(
-            document.data(),
-            documentId: document.id,
-          ),
+          PlayerModel.fromJson(document.data(), documentId: document.id),
         );
       } on FormatException catch (error) {
         throw FormatException(
@@ -48,8 +45,7 @@ class FirestorePlayerRepository implements PlayerRepository {
 
     return PlayerCatalogMetadata(
       version: data['version']?.toString() ?? 'legacy',
-      activePlayerCount:
-          (data['active_player_count'] as num?)?.toInt() ?? 0,
+      activePlayerCount: (data['active_player_count'] as num?)?.toInt() ?? 0,
       sourceName: data['source_name']?.toString() ?? 'Non specificata',
       updatedAt: _readDate(data['updated_at']),
       updatedByUid: data['updated_by_uid']?.toString(),
@@ -107,46 +103,34 @@ class FirestorePlayerRepository implements PlayerRepository {
           purchasePrice: null,
         ),
       ).toJson();
-      await enqueue(
-        _players.doc(player.id),
-        {
-          ...data,
-          'active': true,
-          'catalog_version': version,
-          'catalog_updated_at': FieldValue.serverTimestamp(),
-        },
-        merge: true,
-      );
+      await enqueue(_players.doc(player.id), {
+        ...data,
+        'active': true,
+        'catalog_version': version,
+        'catalog_updated_at': FieldValue.serverTimestamp(),
+      }, merge: true);
     }
 
     for (final playerId in missingIds) {
-      await enqueue(
-        _players.doc(playerId),
-        {
-          'active': false,
-          'catalog_version': version,
-          'catalog_updated_at': FieldValue.serverTimestamp(),
-        },
-        merge: true,
-      );
+      await enqueue(_players.doc(playerId), {
+        'active': false,
+        'catalog_version': version,
+        'catalog_updated_at': FieldValue.serverTimestamp(),
+      }, merge: true);
     }
 
     final activeCount = deactivateMissing
         ? importedIds.length
         : existingActiveIds.union(importedIds).length;
-    await enqueue(
-      _catalogMetadata,
-      {
-        'version': version,
-        'active_player_count': activeCount,
-        'source_name': sourceName.trim().isEmpty
-            ? 'Import manuale'
-            : sourceName.trim(),
-        'updated_at': FieldValue.serverTimestamp(),
-        'updated_by_uid': updatedByUid,
-      },
-      merge: true,
-    );
+    await enqueue(_catalogMetadata, {
+      'version': version,
+      'active_player_count': activeCount,
+      'source_name': sourceName.trim().isEmpty
+          ? 'Import manuale'
+          : sourceName.trim(),
+      'updated_at': FieldValue.serverTimestamp(),
+      'updated_by_uid': updatedByUid,
+    }, merge: true);
     await flush();
 
     return PlayerCatalogUpdateResult(

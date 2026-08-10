@@ -24,11 +24,7 @@ void main() {
       createdAt: DateTime.utc(2026, 7, 27),
       initialPlayers: [player('p1'), player('p2')],
       initialTeams: const [
-        FantasyTeamEntity(
-          id: 'me',
-          name: 'Matrix FC',
-          creditsRemaining: 100,
-        ),
+        FantasyTeamEntity(id: 'me', name: 'Matrix FC', creditsRemaining: 100),
       ],
     );
 

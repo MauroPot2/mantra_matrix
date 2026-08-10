@@ -55,9 +55,8 @@ class _PlayerCatalogScreenState extends ConsumerState<PlayerCatalogScreen> {
             isAdmin.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, stackTrace) => _AdminUnavailable(error: error),
-              data: (allowed) => allowed
-                  ? _buildImporter(context)
-                  : const _AdminOnlyNotice(),
+              data: (allowed) =>
+                  allowed ? _buildImporter(context) : const _AdminOnlyNotice(),
             ),
           ],
         ),
@@ -136,10 +135,7 @@ class _PlayerCatalogScreenState extends ConsumerState<PlayerCatalogScreen> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 8),
-              Text(
-                _error!,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
+              Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
             ],
             if (_preview != null) ...[
               const SizedBox(height: 10),
@@ -157,8 +153,9 @@ class _PlayerCatalogScreenState extends ConsumerState<PlayerCatalogScreen> {
                   label: const Text('Controlla anteprima'),
                 ),
                 FilledButton.icon(
-                  onPressed:
-                      _isImporting || _preview == null ? null : _importCatalog,
+                  onPressed: _isImporting || _preview == null
+                      ? null
+                      : _importCatalog,
                   icon: _isImporting
                       ? const SizedBox.square(
                           dimension: 18,
@@ -206,7 +203,9 @@ class _PlayerCatalogScreenState extends ConsumerState<PlayerCatalogScreen> {
 
     setState(() => _isImporting = true);
     try {
-      final result = await ref.read(playerRepositoryProvider).updateCatalog(
+      final result = await ref
+          .read(playerRepositoryProvider)
+          .updateCatalog(
             players: players,
             sourceName: _sourceNameController.text,
             updatedByUid: uid,
@@ -264,7 +263,9 @@ class _CatalogStatusCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    isLoading ? 'Caricamento listone…' : '${playerCount ?? 0} giocatori attivi',
+                    isLoading
+                        ? 'Caricamento listone…'
+                        : '${playerCount ?? 0} giocatori attivi',
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
@@ -275,8 +276,7 @@ class _CatalogStatusCard extends StatelessWidget {
             if (!isLoading) ...[
               const SizedBox(height: 12),
               Text('Fonte: ${metadata?.sourceName ?? 'Catalogo legacy'}'),
-              if (metadata != null)
-                Text('Versione: ${metadata!.version}'),
+              if (metadata != null) Text('Versione: ${metadata!.version}'),
               if (updatedAt != null)
                 Text(
                   'Aggiornato: ${_twoDigits(updatedAt.day)}/${_twoDigits(updatedAt.month)}/${updatedAt.year} '

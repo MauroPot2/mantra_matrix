@@ -24,8 +24,7 @@ class LiveAuctionScreen extends ConsumerStatefulWidget {
   const LiveAuctionScreen({super.key});
 
   @override
-  ConsumerState<LiveAuctionScreen> createState() =>
-      _LiveAuctionScreenState();
+  ConsumerState<LiveAuctionScreen> createState() => _LiveAuctionScreenState();
 }
 
 class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
@@ -76,9 +75,7 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
                       const SizedBox(height: 18),
                       Text(
                         'Asta conclusa',
-                        style: Theme.of(context)
-                            .textTheme
-                            .headlineMedium
+                        style: Theme.of(context).textTheme.headlineMedium
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       const SizedBox(height: 8),
@@ -111,21 +108,23 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
     final myTeam = snapshot.teamsById[state.myTeamId]!;
     // Manteniamo l'ordine inserito nel setup, utile durante la rotazione d'asta.
     final teams = snapshot.teamsById.values.toList(growable: false);
-    final selectedTeamId = state.isOwner &&
-            teams.any((team) => team.id == _selectedTeamId)
+    final selectedTeamId =
+        state.isOwner && teams.any((team) => team.id == _selectedTeamId)
         ? _selectedTeamId!
         : state.myTeamId!;
 
-    final teamPanel = _TeamCommandPanel(
-      team: myTeam,
-      session: session,
-    );
+    final teamPanel = _TeamCommandPanel(team: myTeam, session: session);
     final auctionPanel = _AuctionCommandPanel(
       state: state,
       selectedTeamId: selectedTeamId,
       teams: teams,
       onTeamChanged: (value) => setState(() => _selectedTeamId = value),
       onPickPlayer: () => _showPlayerPicker(snapshot),
+      hasAttemptedAutomaticSettlement: _automaticSettlementAttempts.contains,
+      onAttemptAutomaticSettlement: (settlementEventId) {
+        if (!_automaticSettlementAttempts.add(settlementEventId)) return;
+        ref.read(auctionControllerProvider.notifier).settleExpiredLot();
+      },
     );
     final marketPanel = _MarketCommandPanel(
       team: myTeam,
@@ -162,9 +161,7 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
           if (session.isShared && session.joinCode.isNotEmpty)
             TextButton.icon(
               onPressed: () async {
-                await Clipboard.setData(
-                  ClipboardData(text: session.joinCode),
-                );
+                await Clipboard.setData(ClipboardData(text: session.joinCode));
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Codice asta copiato.')),
@@ -178,9 +175,7 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
             tooltip: 'Annulla ultima azione',
             onPressed: !state.isOwner || snapshot.lastReversibleEvent == null
                 ? null
-                : () => ref
-                    .read(auctionControllerProvider.notifier)
-                    .undoLast(),
+                : () => ref.read(auctionControllerProvider.notifier).undoLast(),
             icon: const Icon(Icons.undo_rounded),
           ),
           const SizedBox(width: 6),
@@ -223,9 +218,7 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
                       child: SingleChildScrollView(child: teamPanel),
                     ),
                     const SizedBox(width: 16),
-                    Expanded(
-                      child: SingleChildScrollView(child: auctionPanel),
-                    ),
+                    Expanded(child: SingleChildScrollView(child: auctionPanel)),
                     const SizedBox(width: 16),
                     SizedBox(
                       width: 330,
@@ -246,14 +239,16 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
                       width: 300,
                       child: SingleChildScrollView(
                         child: Column(
-                          children: [teamPanel, const SizedBox(height: 14), marketPanel],
+                          children: [
+                            teamPanel,
+                            const SizedBox(height: 14),
+                            marketPanel,
+                          ],
                         ),
                       ),
                     ),
                     const SizedBox(width: 16),
-                    Expanded(
-                      child: SingleChildScrollView(child: auctionPanel),
-                    ),
+                    Expanded(child: SingleChildScrollView(child: auctionPanel)),
                   ],
                 ),
               );
@@ -323,36 +318,43 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
             final sourcePlayers = switch (poolFilter) {
               _PlayerPoolFilter.uncalled => snapshot.uncalledPlayers,
               _PlayerPoolFilter.unsold => snapshot.unsoldPlayers,
-              _PlayerPoolFilter.allAvailable => snapshot.availablePlayers
-                  .where((player) => player.id != snapshot.activePlayerId)
-                  .toList(growable: false),
+              _PlayerPoolFilter.allAvailable =>
+                snapshot.availablePlayers
+                    .where((player) => player.id != snapshot.activePlayerId)
+                    .toList(growable: false),
             };
             final normalized = query.trim().toLowerCase();
             final callOrder = {
-              for (var index = 0;
-                  index < session.callOrderPlayerIds.length;
-                  index++)
+              for (
+                var index = 0;
+                index < session.callOrderPlayerIds.length;
+                index++
+              )
                 session.callOrderPlayerIds[index]: index,
             };
-            final players = sourcePlayers
-                .where((player) {
-                  final matchesRole = roleFilter == null ||
-                      player.roles.contains(roleFilter);
-                  if (!matchesRole) return false;
-                  if (normalized.isEmpty) return true;
-                  final roles = player.roles.map((role) => role.name).join(' ');
-                  return player.name.toLowerCase().contains(normalized) ||
-                      player.team.toLowerCase().contains(normalized) ||
-                      roles.contains(normalized);
-                })
-                .toList(growable: false)
-              ..sort((a, b) {
-                final orderComparison = (callOrder[a.id] ?? (1 << 30))
-                    .compareTo(callOrder[b.id] ?? (1 << 30));
-                return orderComparison != 0
-                    ? orderComparison
-                    : a.name.compareTo(b.name);
-              });
+            final players =
+                sourcePlayers
+                    .where((player) {
+                      final matchesRole =
+                          roleFilter == null ||
+                          player.roles.contains(roleFilter);
+                      if (!matchesRole) return false;
+                      if (normalized.isEmpty) return true;
+                      final roles = player.roles
+                          .map((role) => role.name)
+                          .join(' ');
+                      return player.name.toLowerCase().contains(normalized) ||
+                          player.team.toLowerCase().contains(normalized) ||
+                          roles.contains(normalized);
+                    })
+                    .toList(growable: false)
+                  ..sort((a, b) {
+                    final orderComparison = (callOrder[a.id] ?? (1 << 30))
+                        .compareTo(callOrder[b.id] ?? (1 << 30));
+                    return orderComparison != 0
+                        ? orderComparison
+                        : a.name.compareTo(b.name);
+                  });
 
             return FractionallySizedBox(
               heightFactor: 0.92,
@@ -367,9 +369,8 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
                   children: [
                     Text(
                       'Giocatore chiamato',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w900),
                     ),
                     const SizedBox(height: 12),
                     SingleChildScrollView(
@@ -412,8 +413,7 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
                         prefixIcon: Icon(Icons.search),
                         hintText: 'Nome, squadra o ruolo',
                       ),
-                      onChanged: (value) =>
-                          setModalState(() => query = value),
+                      onChanged: (value) => setModalState(() => query = value),
                     ),
                     const SizedBox(height: 10),
                     SizedBox(
@@ -460,9 +460,9 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
                                 final player = players[index];
                                 final isUnsold = snapshot.isUnsold(player.id);
                                 return ListTile(
-                                  tileColor: Theme.of(context)
-                                      .colorScheme
-                                      .surfaceContainerLow,
+                                  tileColor: Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainerLow,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(16),
                                   ),
@@ -583,6 +583,8 @@ class _AuctionCommandPanel extends ConsumerWidget {
   final List<FantasyTeamEntity> teams;
   final ValueChanged<String?> onTeamChanged;
   final VoidCallback onPickPlayer;
+  final bool Function(String settlementEventId) hasAttemptedAutomaticSettlement;
+  final ValueChanged<String> onAttemptAutomaticSettlement;
 
   const _AuctionCommandPanel({
     required this.state,
@@ -590,6 +592,8 @@ class _AuctionCommandPanel extends ConsumerWidget {
     required this.teams,
     required this.onTeamChanged,
     required this.onPickPlayer,
+    required this.hasAttemptedAutomaticSettlement,
+    required this.onAttemptAutomaticSettlement,
   });
 
   @override
@@ -606,18 +610,16 @@ class _AuctionCommandPanel extends ConsumerWidget {
         onPickPlayer: state.isOwner ? onPickPlayer : null,
         onNominateNext: state.isOwner && nextPlayer != null
             ? () => ref
-                .read(auctionControllerProvider.notifier)
-                .nominatePlayer(nextPlayer.id)
+                  .read(auctionControllerProvider.notifier)
+                  .nominatePlayer(nextPlayer.id)
             : null,
       );
     }
 
-    final settlementEventId =
-        'settle_${snapshot.activeBid!.nominationEventId}';
-    final wasAlreadySettled = state.session!.events.any(
-          (event) => event.id == settlementEventId,
-        ) ||
-        _automaticSettlementAttempts.contains(settlementEventId);
+    final settlementEventId = 'settle_${snapshot.activeBid!.nominationEventId}';
+    final wasAlreadySettled =
+        state.session!.events.any((event) => event.id == settlementEventId) ||
+        hasAttemptedAutomaticSettlement(settlementEventId);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -633,16 +635,9 @@ class _AuctionCommandPanel extends ConsumerWidget {
             totalSeconds: state.session!.config.bidDurationSeconds,
             leadingTeamName: snapshot.activeBid!.leadingTeamId == null
                 ? null
-                : snapshot
-                    .teamsById[snapshot.activeBid!.leadingTeamId!]
-                    ?.name,
+                : snapshot.teamsById[snapshot.activeBid!.leadingTeamId!]?.name,
             onExpired: state.isOwner && !wasAlreadySettled
-                ? () {
-                    _automaticSettlementAttempts.add(settlementEventId);
-                    ref
-                        .read(auctionControllerProvider.notifier)
-                        .settleExpiredLot();
-                  }
+                ? () => onAttemptAutomaticSettlement(settlementEventId)
                 : null,
           ),
           const SizedBox(height: 14),
@@ -666,9 +661,7 @@ class _AuctionCommandPanel extends ConsumerWidget {
             onTeamChanged: onTeamChanged,
           )
         else
-          _ParticipantNotice(
-            team: snapshot.teamsById[state.myTeamId!]!,
-          ),
+          _ParticipantNotice(team: snapshot.teamsById[state.myTeamId!]!),
       ],
     );
   }
@@ -728,7 +721,7 @@ class _EmptyAuctionCard extends StatelessWidget {
               nextPlayer == null
                   ? '$remainingPlayers giocatori ancora sul mercato'
                   : 'Prossimo: ${nextPlayer!.name} · '
-                      '${nextPlayer!.roles.first.name.toUpperCase()}',
+                        '${nextPlayer!.roles.first.name.toUpperCase()}',
               textAlign: TextAlign.center,
             ),
             if (onPickPlayer != null) ...[
@@ -763,10 +756,7 @@ class _ActivePlayerHero extends StatelessWidget {
   final PlayerEntity player;
   final VoidCallback? onChangePlayer;
 
-  const _ActivePlayerHero({
-    required this.player,
-    required this.onChangePlayer,
-  });
+  const _ActivePlayerHero({required this.player, required this.onChangePlayer});
 
   @override
   Widget build(BuildContext context) {
@@ -1003,8 +993,8 @@ class _BidControlState extends ConsumerState<_BidControl> {
     final matchingLeaders = widget.leadingTeamId == null
         ? const <FantasyTeamEntity>[]
         : widget.teams
-            .where((team) => team.id == widget.leadingTeamId)
-            .toList(growable: false);
+              .where((team) => team.id == widget.leadingTeamId)
+              .toList(growable: false);
     final leader = matchingLeaders.isEmpty ? null : matchingLeaders.first;
     final bidder = widget.teams.firstWhere(
       (team) => team.id == widget.bidderTeamId,
@@ -1081,10 +1071,7 @@ class _BidControlState extends ConsumerState<_BidControl> {
             Row(
               children: [
                 Expanded(
-                  child: _BidButton(
-                    label: '+1',
-                    onPressed: () => _changeBy(1),
-                  ),
+                  child: _BidButton(label: '+1', onPressed: () => _changeBy(1)),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -1113,10 +1100,9 @@ class _BidControlState extends ConsumerState<_BidControl> {
   void _commit() {
     final parsed = int.tryParse(_controller.text);
     if (parsed == null) return;
-    ref.read(auctionControllerProvider.notifier).placeBid(
-          teamId: widget.bidderTeamId,
-          bid: parsed,
-        );
+    ref
+        .read(auctionControllerProvider.notifier)
+        .placeBid(teamId: widget.bidderTeamId, bid: parsed);
     _focusNode.unfocus();
   }
 
@@ -1126,14 +1112,13 @@ class _BidControlState extends ConsumerState<_BidControl> {
         : widget.minimumBid;
     final next = widget.leadingTeamId == null
         ? (openingAmount > widget.currentBid
-            ? openingAmount
-            : widget.currentBid)
+              ? openingAmount
+              : widget.currentBid)
         : widget.currentBid + amount;
     _controller.text = next.toString();
-    ref.read(auctionControllerProvider.notifier).placeBid(
-          teamId: widget.bidderTeamId,
-          bid: next,
-        );
+    ref
+        .read(auctionControllerProvider.notifier)
+        .placeBid(teamId: widget.bidderTeamId, bid: next);
   }
 }
 
@@ -1239,7 +1224,8 @@ class _RecommendationCard extends StatelessWidget {
                         _MetricTile(
                           width: itemWidth,
                           label: 'Affidabilità',
-                          value: '${(recommendation.confidence * 100).round()}%',
+                          value:
+                              '${(recommendation.confidence * 100).round()}%',
                           icon: Icons.verified_outlined,
                         ),
                         if (evidence != null)
@@ -1252,7 +1238,8 @@ class _RecommendationCard extends StatelessWidget {
                         if (recommendation.department != null)
                           _MetricTile(
                             width: itemWidth,
-                            label: 'Piano ${recommendation.department!.shortLabel}',
+                            label:
+                                'Piano ${recommendation.department!.shortLabel}',
                             value:
                                 '${recommendation.departmentSpent}/${recommendation.departmentBudget}',
                             icon: Icons.account_balance_wallet_outlined,
@@ -1316,9 +1303,9 @@ class _AssignmentCard extends ConsumerWidget {
           children: [
             Text(
               'Esito chiamata',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
@@ -1403,10 +1390,7 @@ class _ParticipantNotice extends StatelessWidget {
 class _TeamCommandPanel extends StatelessWidget {
   final FantasyTeamEntity team;
   final AuctionSession session;
-  const _TeamCommandPanel({
-    required this.team,
-    required this.session,
-  });
+  const _TeamCommandPanel({required this.team, required this.session});
 
   @override
   Widget build(BuildContext context) {
@@ -1446,7 +1430,9 @@ class _TeamCommandPanel extends StatelessWidget {
                               fontWeight: FontWeight.w900,
                             ),
                           ),
-                          Text('${team.roster.length}/${session.config.rosterSize} giocatori'),
+                          Text(
+                            '${team.roster.length}/${session.config.rosterSize} giocatori',
+                          ),
                         ],
                       ),
                     ),
@@ -1465,10 +1451,7 @@ class _TeamCommandPanel extends StatelessWidget {
                       child: _MiniKpi(label: 'Spesi', value: '$spent'),
                     ),
                     Expanded(
-                      child: _MiniKpi(
-                        label: 'Slot',
-                        value: '$slotsRemaining',
-                      ),
+                      child: _MiniKpi(label: 'Slot', value: '$slotsRemaining'),
                     ),
                   ],
                 ),
@@ -1515,7 +1498,10 @@ class _DepartmentPlanCard extends StatelessWidget {
                       (player) =>
                           PlayerDepartmentX.forPlayer(player) == department,
                     )
-                    .fold(0, (sum, player) => sum + (player.purchasePrice ?? 0));
+                    .fold(
+                      0,
+                      (sum, player) => sum + (player.purchasePrice ?? 0),
+                    );
                 final progress = budget == 0
                     ? 0.0
                     : (spent / budget).clamp(0.0, 1.0).toDouble();
@@ -1590,9 +1576,7 @@ class _RoleCoverageCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: complete
                         ? Colors.green.withValues(alpha: 0.13)
-                        : Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest,
+                        : Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(13),
                   ),
                   child: Column(
@@ -1631,13 +1615,13 @@ class _FormationCard extends StatelessWidget {
         final aPriority = a.formation.name == primary
             ? 0
             : secondary.contains(a.formation.name)
-                ? 1
-                : 2;
+            ? 1
+            : 2;
         final bPriority = b.formation.name == primary
             ? 0
             : secondary.contains(b.formation.name)
-                ? 1
-                : 2;
+            ? 1
+            : 2;
         final priority = aPriority.compareTo(bPriority);
         if (priority != 0) return priority;
         return a.missingSlots.compareTo(b.missingSlots);
@@ -1661,8 +1645,8 @@ class _FormationCard extends StatelessWidget {
                         analysis.formation.name == primary
                             ? '★'
                             : secondary.contains(analysis.formation.name)
-                                ? '◇'
-                                : '',
+                            ? '◇'
+                            : '',
                       ),
                     ),
                     Expanded(child: Text(analysis.formation.name)),
@@ -1672,8 +1656,9 @@ class _FormationCard extends StatelessWidget {
                           : '−${analysis.missingSlots}',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
-                        color:
-                            analysis.isPlayable ? Colors.green.shade500 : null,
+                        color: analysis.isPlayable
+                            ? Colors.green.shade500
+                            : null,
                       ),
                     ),
                   ],
@@ -1759,9 +1744,9 @@ class _MarketCommandPanel extends StatelessWidget {
               children: [
                 Text(
                   'Radar mercato',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 4),
                 const Text(
@@ -1794,10 +1779,7 @@ class _MarketCommandPanel extends StatelessWidget {
           onNominatePlayer: onNominatePlayer,
         ),
         const SizedBox(height: 14),
-        _TeamsOverviewCard(
-          teams: teams,
-          rosterSize: session.config.rosterSize,
-        ),
+        _TeamsOverviewCard(teams: teams, rosterSize: session.config.rosterSize),
         const SizedBox(height: 14),
         _SectionCard(
           title: 'Strategia attiva',
@@ -1830,10 +1812,7 @@ class _AuctionTimelineCard extends StatelessWidget {
   final AuctionSession session;
   final AuctionSessionSnapshot snapshot;
 
-  const _AuctionTimelineCard({
-    required this.session,
-    required this.snapshot,
-  });
+  const _AuctionTimelineCard({required this.session, required this.snapshot});
 
   @override
   Widget build(BuildContext context) {
@@ -1875,10 +1854,7 @@ class _AuctionOutcomeTile extends StatelessWidget {
   final AuctionEvent event;
   final AuctionSessionSnapshot snapshot;
 
-  const _AuctionOutcomeTile({
-    required this.event,
-    required this.snapshot,
-  });
+  const _AuctionOutcomeTile({required this.event, required this.snapshot});
 
   @override
   Widget build(BuildContext context) {
@@ -1887,22 +1863,22 @@ class _AuctionOutcomeTile extends StatelessWidget {
 
     final (icon, label, detail) = switch (event.type) {
       AuctionEventType.playerAssigned => (
-          Icons.gavel_rounded,
-          'Assegnato',
-          '${team?.name ?? 'Squadra sconosciuta'} · ${event.amount ?? 0} cr',
-        ),
+        Icons.gavel_rounded,
+        'Assegnato',
+        '${team?.name ?? 'Squadra sconosciuta'} · ${event.amount ?? 0} cr',
+      ),
       AuctionEventType.playerSkipped => (
-          Icons.replay_rounded,
-          'Svincolato',
-          'Richiamabile dalla lista dedicata',
-        ),
+        Icons.replay_rounded,
+        'Svincolato',
+        'Richiamabile dalla lista dedicata',
+      ),
       AuctionEventType.playerMarkedUnavailable => (
-          Icons.block_rounded,
-          'Escluso',
-          event.note?.trim().isNotEmpty == true
-              ? event.note!.trim()
-              : 'Rimosso dal mercato',
-        ),
+        Icons.block_rounded,
+        'Escluso',
+        event.note?.trim().isNotEmpty == true
+            ? event.note!.trim()
+            : 'Rimosso dal mercato',
+      ),
       _ => (Icons.circle_outlined, 'Evento', ''),
     };
 
@@ -1917,9 +1893,9 @@ class _AuctionOutcomeTile extends StatelessWidget {
       subtitle: Text(detail),
       trailing: Text(
         label,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w900),
       ),
     );
   }
@@ -2077,10 +2053,7 @@ class _TeamsOverviewCard extends StatelessWidget {
   final List<FantasyTeamEntity> teams;
   final int rosterSize;
 
-  const _TeamsOverviewCard({
-    required this.teams,
-    required this.rosterSize,
-  });
+  const _TeamsOverviewCard({required this.teams, required this.rosterSize});
 
   @override
   Widget build(BuildContext context) {
@@ -2275,9 +2248,7 @@ class _TopMarketPlayerTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final roles = player.roles
-        .map((role) => role.name.toUpperCase())
-        .join('/');
+    final roles = player.roles.map((role) => role.name.toUpperCase()).join('/');
 
     return ListTile(
       dense: true,
@@ -2345,10 +2316,7 @@ class _EvidenceExpansion extends StatelessWidget {
         if (evidence.strengths.isNotEmpty) ...[
           const SizedBox(height: 8),
           for (final strength in evidence.strengths)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text('✓ $strength'),
-            ),
+            Align(alignment: Alignment.centerLeft, child: Text('✓ $strength')),
         ],
       ],
     );
@@ -2424,8 +2392,8 @@ class _SectionCard extends StatelessWidget {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ],
             ),
@@ -2592,11 +2560,7 @@ class _InfoPill extends StatelessWidget {
   final IconData? icon;
   final bool warning;
 
-  const _InfoPill({
-    required this.label,
-    this.icon,
-    this.warning = false,
-  });
+  const _InfoPill({required this.label, this.icon, this.warning = false});
 
   @override
   Widget build(BuildContext context) {
@@ -2612,10 +2576,7 @@ class _InfoPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 14),
-            const SizedBox(width: 4),
-          ],
+          if (icon != null) ...[Icon(icon, size: 14), const SizedBox(width: 4)],
           Text(label, style: theme.textTheme.labelMedium),
         ],
       ),
@@ -2635,9 +2596,9 @@ class _MiniKpi extends StatelessWidget {
       children: [
         Text(
           value,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w900,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
         ),
         Text(label, style: Theme.of(context).textTheme.labelSmall),
       ],
@@ -2664,7 +2625,10 @@ class _StrategyLine extends StatelessWidget {
         SizedBox(width: 24, child: Text(symbol)),
         SizedBox(width: 82, child: Text(label)),
         Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+          child: Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
         ),
       ],
     );
@@ -2697,19 +2661,19 @@ String _roles(PlayerEntity player) =>
     player.roles.map((role) => role.name.toUpperCase()).join('/');
 
 String _decisionLabel(AuctionDecision decision) => switch (decision) {
-      AuctionDecision.strongBuy => 'COMPRA FORTE',
-      AuctionDecision.buy => 'COMPRA',
-      AuctionDecision.wait => 'ATTENDI',
-      AuctionDecision.pass => 'LASCIA',
-      AuctionDecision.unavailable => 'NON DISPONIBILE',
-    };
+  AuctionDecision.strongBuy => 'COMPRA FORTE',
+  AuctionDecision.buy => 'COMPRA',
+  AuctionDecision.wait => 'ATTENDI',
+  AuctionDecision.pass => 'LASCIA',
+  AuctionDecision.unavailable => 'NON DISPONIBILE',
+};
 
 String _riskLabel(AuctionRisk risk) => switch (risk) {
-      AuctionRisk.low => 'Rischio basso',
-      AuctionRisk.medium => 'Rischio medio',
-      AuctionRisk.high => 'Rischio alto',
-      AuctionRisk.critical => 'Rischio critico',
-    };
+  AuctionRisk.low => 'Rischio basso',
+  AuctionRisk.medium => 'Rischio medio',
+  AuctionRisk.high => 'Rischio alto',
+  AuctionRisk.critical => 'Rischio critico',
+};
 
 Color _decisionColor(AuctionDecision decision, ColorScheme colors) =>
     switch (decision) {
@@ -2721,8 +2685,8 @@ Color _decisionColor(AuctionDecision decision, ColorScheme colors) =>
     };
 
 Color _riskColor(AuctionRisk risk) => switch (risk) {
-      AuctionRisk.low => Colors.green.shade500,
-      AuctionRisk.medium => Colors.orange.shade500,
-      AuctionRisk.high => Colors.deepOrange.shade500,
-      AuctionRisk.critical => Colors.red.shade600,
-    };
+  AuctionRisk.low => Colors.green.shade500,
+  AuctionRisk.medium => Colors.orange.shade500,
+  AuctionRisk.high => Colors.deepOrange.shade500,
+  AuctionRisk.critical => Colors.red.shade600,
+};

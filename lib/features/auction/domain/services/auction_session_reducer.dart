@@ -11,9 +11,7 @@ class AuctionSessionReducer {
     final players = {
       for (final player in session.initialPlayers) player.id: player,
     };
-    final teams = {
-      for (final team in session.initialTeams) team.id: team,
-    };
+    final teams = {for (final team in session.initialTeams) team.id: team};
     final assignments = <String, RosterAssignment>{};
     final unsoldPlayerIds = <String>[];
 
@@ -44,7 +42,9 @@ class AuctionSessionReducer {
             throw StateError('Evento ${event.id}: giocatore non disponibile.');
           }
           if (activePlayerId != null) {
-            throw StateError('Evento ${event.id}: esiste già una chiamata attiva.');
+            throw StateError(
+              'Evento ${event.id}: esiste già una chiamata attiva.',
+            );
           }
           // Se era già passato come invenduto, durante la nuova chiamata
           // esce temporaneamente dalla lista dedicata.
@@ -66,7 +66,9 @@ class AuctionSessionReducer {
 
         case AuctionEventType.bidChanged:
           if (activePlayerId == null || activePlayerId != event.playerId) {
-            throw StateError('Evento ${event.id}: cambio prezzo senza chiamata valida.');
+            throw StateError(
+              'Evento ${event.id}: cambio prezzo senza chiamata valida.',
+            );
           }
           final previousBid = activeBid;
           if (previousBid == null) {
@@ -96,7 +98,8 @@ class AuctionSessionReducer {
           if (team == null) {
             throw StateError('Evento ${event.id}: squadra inesistente.');
           }
-          if (activePlayerId != player.id || player.status != DraftStatus.available) {
+          if (activePlayerId != player.id ||
+              player.status != DraftStatus.available) {
             throw StateError('Evento ${event.id}: assegnazione non valida.');
           }
           if (event.amount! > team.creditsRemaining) {
@@ -133,7 +136,9 @@ class AuctionSessionReducer {
 
         case AuctionEventType.playerSkipped:
           if (activePlayerId != event.playerId) {
-            throw StateError('Evento ${event.id}: salto senza chiamata valida.');
+            throw StateError(
+              'Evento ${event.id}: salto senza chiamata valida.',
+            );
           }
           // Manteniamo una sola occorrenza e spostiamo il giocatore in fondo,
           // così la lista rispetta l'ordine cronologico degli ultimi invenduti.
@@ -149,7 +154,8 @@ class AuctionSessionReducer {
           if (player == null) {
             throw StateError('Evento ${event.id}: giocatore inesistente.');
           }
-          if (activePlayerId != player.id || player.status != DraftStatus.available) {
+          if (activePlayerId != player.id ||
+              player.status != DraftStatus.available) {
             throw StateError('Evento ${event.id}: indisponibilità non valida.');
           }
           players[player.id] = player.copyWith(

@@ -47,9 +47,18 @@ void main() {
     expect(team.roster.single.id, 'p1');
     expect(state.activePlayerId, isNull);
     expect(state.assignmentsByPlayerId['p1']!.price, 12);
-    expect(state.availablePlayers.map((player) => player.id), isNot(contains('p1')));
-    expect(state.uncalledPlayers.map((player) => player.id), isNot(contains('p1')));
-    expect(state.unsoldPlayers.map((player) => player.id), isNot(contains('p1')));
+    expect(
+      state.availablePlayers.map((player) => player.id),
+      isNot(contains('p1')),
+    );
+    expect(
+      state.uncalledPlayers.map((player) => player.id),
+      isNot(contains('p1')),
+    );
+    expect(
+      state.unsoldPlayers.map((player) => player.id),
+      isNot(contains('p1')),
+    );
     expect(state.draftedPlayers.map((player) => player.id), contains('p1'));
   });
 
@@ -61,11 +70,7 @@ void main() {
       createdAt: date(0),
       initialPlayers: [buildPlayer('p1')],
       initialTeams: const [
-        FantasyTeamEntity(
-          id: 't1',
-          name: 'Matrix FC',
-          creditsRemaining: 10,
-        ),
+        FantasyTeamEntity(id: 't1', name: 'Matrix FC', creditsRemaining: 10),
       ],
     );
 
@@ -109,11 +114,7 @@ void main() {
       eventId: 'e3',
       occurredAt: date(3),
     );
-    session = service.undoLast(
-      session,
-      eventId: 'e4',
-      occurredAt: date(4),
-    );
+    session = service.undoLast(session, eventId: 'e4', occurredAt: date(4));
 
     final state = service.snapshot(session);
     final player = state.playersById['p1']!;
@@ -150,50 +151,41 @@ void main() {
       occurredAt: date(3),
     );
 
-    session = service.undoLast(
-      session,
-      eventId: 'e4',
-      occurredAt: date(4),
-    );
+    session = service.undoLast(session, eventId: 'e4', occurredAt: date(4));
     expect(service.snapshot(session).currentBid, 5);
 
-    session = service.undoLast(
-      session,
-      eventId: 'e5',
-      occurredAt: date(5),
-    );
+    session = service.undoLast(session, eventId: 'e5', occurredAt: date(5));
     expect(service.snapshot(session).currentBid, 1);
   });
 
-  test('saltare mantiene il giocatore disponibile e undo riapre la chiamata', () {
-    var session = buildSession();
-    session = service.nominatePlayer(
-      session,
-      playerId: 'p1',
-      eventId: 'e1',
-      occurredAt: date(1),
-    );
-    session = service.skipActivePlayer(
-      session,
-      eventId: 'e2',
-      occurredAt: date(2),
-    );
+  test(
+    'saltare mantiene il giocatore disponibile e undo riapre la chiamata',
+    () {
+      var session = buildSession();
+      session = service.nominatePlayer(
+        session,
+        playerId: 'p1',
+        eventId: 'e1',
+        occurredAt: date(1),
+      );
+      session = service.skipActivePlayer(
+        session,
+        eventId: 'e2',
+        occurredAt: date(2),
+      );
 
-    final skippedState = service.snapshot(session);
-    expect(skippedState.activePlayerId, isNull);
-    expect(skippedState.playersById['p1']!.status, DraftStatus.available);
-    expect(skippedState.unsoldPlayers.map((player) => player.id), ['p1']);
-    expect(skippedState.uncalledPlayers.map((player) => player.id), ['p2']);
+      final skippedState = service.snapshot(session);
+      expect(skippedState.activePlayerId, isNull);
+      expect(skippedState.playersById['p1']!.status, DraftStatus.available);
+      expect(skippedState.unsoldPlayers.map((player) => player.id), ['p1']);
+      expect(skippedState.uncalledPlayers.map((player) => player.id), ['p2']);
 
-    session = service.undoLast(
-      session,
-      eventId: 'e3',
-      occurredAt: date(3),
-    );
-    final restoredState = service.snapshot(session);
-    expect(restoredState.activePlayerId, 'p1');
-    expect(restoredState.unsoldPlayers, isEmpty);
-  });
+      session = service.undoLast(session, eventId: 'e3', occurredAt: date(3));
+      final restoredState = service.snapshot(session);
+      expect(restoredState.activePlayerId, 'p1');
+      expect(restoredState.unsoldPlayers, isEmpty);
+    },
+  );
 
   test('uno svincolato può essere richiamato e poi assegnato', () {
     var session = buildSession();
@@ -229,7 +221,10 @@ void main() {
 
     final state = service.snapshot(session);
     expect(state.unsoldPlayers, isEmpty);
-    expect(state.availablePlayers.map((player) => player.id), isNot(contains('p1')));
+    expect(
+      state.availablePlayers.map((player) => player.id),
+      isNot(contains('p1')),
+    );
     expect(state.teamsById['t2']!.roster.single.id, 'p1');
   });
 
@@ -338,16 +333,8 @@ AuctionSession buildSession() {
     createdAt: date(0),
     initialPlayers: [buildPlayer('p1'), buildPlayer('p2')],
     initialTeams: const [
-      FantasyTeamEntity(
-        id: 't1',
-        name: 'Matrix FC',
-        creditsRemaining: 100,
-      ),
-      FantasyTeamEntity(
-        id: 't2',
-        name: 'Rival FC',
-        creditsRemaining: 100,
-      ),
+      FantasyTeamEntity(id: 't1', name: 'Matrix FC', creditsRemaining: 100),
+      FantasyTeamEntity(id: 't2', name: 'Rival FC', creditsRemaining: 100),
     ],
   );
 }

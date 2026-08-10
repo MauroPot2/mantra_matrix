@@ -4,18 +4,18 @@ enum PlayerDepartment { goalkeepers, defenders, midfielders, forwards }
 
 extension PlayerDepartmentX on PlayerDepartment {
   String get label => switch (this) {
-        PlayerDepartment.goalkeepers => 'Portieri',
-        PlayerDepartment.defenders => 'Difensori',
-        PlayerDepartment.midfielders => 'Centrocampisti',
-        PlayerDepartment.forwards => 'Attaccanti',
-      };
+    PlayerDepartment.goalkeepers => 'Portieri',
+    PlayerDepartment.defenders => 'Difensori',
+    PlayerDepartment.midfielders => 'Centrocampisti',
+    PlayerDepartment.forwards => 'Attaccanti',
+  };
 
   String get shortLabel => switch (this) {
-        PlayerDepartment.goalkeepers => 'POR',
-        PlayerDepartment.defenders => 'DIF',
-        PlayerDepartment.midfielders => 'CEN',
-        PlayerDepartment.forwards => 'ATT',
-      };
+    PlayerDepartment.goalkeepers => 'POR',
+    PlayerDepartment.defenders => 'DIF',
+    PlayerDepartment.midfielders => 'CEN',
+    PlayerDepartment.forwards => 'ATT',
+  };
 
   static PlayerDepartment fromName(String? name) {
     return PlayerDepartment.values.firstWhere(

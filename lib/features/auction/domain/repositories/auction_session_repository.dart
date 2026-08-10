@@ -8,10 +8,7 @@ class RestoredAuctionSession {
   final AuctionSession session;
   final String myTeamId;
 
-  const RestoredAuctionSession({
-    required this.session,
-    required this.myTeamId,
-  });
+  const RestoredAuctionSession({required this.session, required this.myTeamId});
 }
 
 abstract class AuctionSessionRepository {
@@ -36,7 +33,6 @@ abstract class AuctionSessionRepository {
   /// Propaga ai partecipanti la conclusione della sessione anche quando non
   /// vengono aggiunti altri eventi d'asta.
   Stream<AuctionSessionStatus> watchStatus({required String sessionId});
-
 
   /// Osserva tutte le aste appartenenti all'utente corrente.
   /// La query concreta deve essere vincolata all'owner UID, così da essere
@@ -80,7 +76,7 @@ class AuctionSessionPersistenceException implements Exception {
 class AuctionSessionConflictException
     extends AuctionSessionPersistenceException {
   const AuctionSessionConflictException()
-      : super(
-          'L’asta è cambiata su un altro dispositivo. Stato aggiornato: ripeti l’azione.',
-        );
+    : super(
+        'L’asta è cambiata su un altro dispositivo. Stato aggiornato: ripeti l’azione.',
+      );
 }

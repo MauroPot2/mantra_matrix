@@ -44,11 +44,12 @@ class _AuctionHomeScreenState extends ConsumerState<AuctionHomeScreen> {
     setState(() => _openingSessionId = null);
 
     if (!opened) {
-      final message = ref.read(auctionControllerProvider).errorMessage ??
+      final message =
+          ref.read(auctionControllerProvider).errorMessage ??
           'Impossibile aprire l’asta.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
       return;
     }
 
@@ -122,9 +123,9 @@ class _AuctionHomeScreenState extends ConsumerState<AuctionHomeScreen> {
       );
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.toString())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
       }
     } finally {
       if (mounted) setState(() => _openingSessionId = null);
@@ -202,11 +203,9 @@ class _AuctionHomeScreenState extends ConsumerState<AuctionHomeScreen> {
           IconButton(
             tooltip: 'Gestisci listone',
             onPressed: () => Navigator.of(context).push<void>(
-              MaterialPageRoute(
-                builder: (_) => const PlayerCatalogScreen(),
-              ),
+              MaterialPageRoute(builder: (_) => const PlayerCatalogScreen()),
             ),
-            icon: const Icon(Icons.database_outlined),
+            icon: const Icon(Icons.storage_outlined),
           ),
           const AuthUserMenu(),
           const SizedBox(width: 8),
@@ -245,8 +244,7 @@ class _AuctionHomeScreenState extends ConsumerState<AuctionHomeScreen> {
                   hasScrollBody: false,
                   child: _SessionsError(
                     error: error,
-                    onRetry: () =>
-                        ref.invalidate(ownedAuctionSessionsProvider),
+                    onRetry: () => ref.invalidate(ownedAuctionSessionsProvider),
                   ),
                 ),
                 data: (items) {
@@ -255,8 +253,7 @@ class _AuctionHomeScreenState extends ConsumerState<AuctionHomeScreen> {
                       .toList(growable: false);
                   final completed = items
                       .where(
-                        (item) =>
-                            item.status == AuctionSessionStatus.completed,
+                        (item) => item.status == AuctionSessionStatus.completed,
                       )
                       .toList(growable: false);
 
@@ -359,8 +356,8 @@ class _WelcomePanel extends StatelessWidget {
               Text(
                 'Bentornato, $firstName',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                  fontWeight: FontWeight.w900,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -426,9 +423,9 @@ class _SectionHeader extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
         ),
         Badge(label: Text('$count')),
@@ -487,9 +484,7 @@ class _AuctionCard extends StatelessWidget {
                               session.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
+                              style: Theme.of(context).textTheme.titleLarge
                                   ?.copyWith(fontWeight: FontWeight.w900),
                             ),
                             const SizedBox(height: 3),
@@ -635,9 +630,9 @@ class _EmptyAuctions extends StatelessWidget {
             const SizedBox(height: 18),
             Text(
               'Nessuna asta salvata',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -697,15 +692,15 @@ class _SessionsError extends StatelessWidget {
               isPermissionDenied
                   ? 'Firestore sta bloccando le aste'
                   : 'Impossibile caricare le aste',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             Text(
               isPermissionDenied
                   ? 'Pubblica le nuove regole Firestore: quelle attuali '
-                      'consentono soltanto la lettura di players.'
+                        'consentono soltanto la lettura di players.'
                   : error.toString(),
               textAlign: TextAlign.center,
             ),

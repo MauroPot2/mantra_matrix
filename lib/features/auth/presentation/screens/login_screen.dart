@@ -71,9 +71,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     await showDialog<void>(
       context: context,
-      builder: (context) => PasswordResetDialog(
-        initialEmail: _emailController.text.trim(),
-      ),
+      builder: (context) =>
+          PasswordResetDialog(initialEmail: _emailController.text.trim()),
     );
   }
 
@@ -91,10 +90,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            SnackBar(
-              content: Text(error),
-              behavior: SnackBarBehavior.floating,
-            ),
+            SnackBar(content: Text(error), behavior: SnackBarBehavior.floating),
           );
       }
 
@@ -165,13 +161,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Widget _buildAuthPanel(AuthUiState authState) {
     final theme = Theme.of(context);
-    final signingInWithEmail = authState.isRunning(
-      AuthOperation.emailSignIn,
-    );
+    final signingInWithEmail = authState.isRunning(AuthOperation.emailSignIn);
     final registering = authState.isRunning(AuthOperation.registration);
-    final signingInWithGoogle = authState.isRunning(
-      AuthOperation.googleSignIn,
-    );
+    final signingInWithGoogle = authState.isRunning(AuthOperation.googleSignIn);
     final emailActionLoading = signingInWithEmail || registering;
 
     return Column(
@@ -319,8 +311,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       onPressed: authState.isLoading
                           ? null
                           : () => setState(
-                              () => _obscureConfirmation =
-                                  !_obscureConfirmation,
+                              () =>
+                                  _obscureConfirmation = !_obscureConfirmation,
                             ),
                       icon: Icon(
                         _obscureConfirmation
@@ -341,9 +333,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: authState.isLoading
-                        ? null
-                        : _openPasswordReset,
+                    onPressed: authState.isLoading ? null : _openPasswordReset,
                     child: const Text('Password dimenticata?'),
                   ),
                 )
@@ -387,8 +377,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           onPressed: authState.isLoading
               ? null
               : () => ref
-                  .read(authControllerProvider.notifier)
-                  .signInWithGoogle(),
+                    .read(authControllerProvider.notifier)
+                    .signInWithGoogle(),
           style: FilledButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
           ),
@@ -450,18 +440,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 class PasswordResetDialog extends ConsumerStatefulWidget {
   final String initialEmail;
 
-  const PasswordResetDialog({
-    super.key,
-    required this.initialEmail,
-  });
+  const PasswordResetDialog({super.key, required this.initialEmail});
 
   @override
   ConsumerState<PasswordResetDialog> createState() =>
       _PasswordResetDialogState();
 }
 
-class _PasswordResetDialogState
-    extends ConsumerState<PasswordResetDialog> {
+class _PasswordResetDialogState extends ConsumerState<PasswordResetDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _emailController;
 
@@ -528,9 +514,7 @@ class _PasswordResetDialogState
                 const SizedBox(height: 12),
                 Text(
                   authState.errorMessage!,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
             ],
@@ -589,9 +573,7 @@ class _LoginHero extends StatelessWidget {
         Text(
           'Mantra Matrix',
           textAlign: compact ? TextAlign.center : TextAlign.start,
-          style: textTheme.displaySmall?.copyWith(
-            fontWeight: FontWeight.w900,
-          ),
+          style: textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 12),
         Text(
