@@ -15,32 +15,30 @@ class RestoredAuctionSession {
 }
 
 abstract class AuctionSessionRepository {
-  /// Crea o aggiorna i metadati della sessione e il relativo snapshot dati.
+  /// Identificatore effimero dell'istanza app corrente. Serve a garantire che
+  /// una sola istanza alla volta produca mutazioni dell'asta.
+  String get instanceId;
+
   Future<void> saveSession({
     required AuctionSession session,
     required String myTeamId,
   });
 
-  /// Accoda un singolo evento immutabile alla sessione e aggiorna lo stato
-  /// live condiviso nello stesso batch Firestore.
   Future<void> appendEvent({
     required String sessionId,
     required AuctionEvent event,
     required AuctionSessionSnapshot snapshotAfterEvent,
   });
 
-  /// Stream realtime del log eventi. Serve a riallineare più dispositivi senza
-  /// polling e senza duplicare il motore di riduzione lato cloud.
   Stream<List<AuctionEvent>> watchEvents({required String sessionId});
 
-  /// Stato minimale ad alta frequenza: giocatore attivo, prezzo e clock.
   Stream<AuctionLiveState?> watchLiveState({required String sessionId});
 
-  /// Osserva tutte le aste appartenenti all'utente corrente.
+  /// Trasferisce esplicitamente il controllo dell'asta all'istanza app corrente.
+  Future<void> claimControl({required String sessionId});
+
   Stream<List<AuctionSessionSummary>> watchOwnedSessions();
 
-  /// Ripristina una sessione. [players] è usato esclusivamente come ponte per
-  /// le sessioni legacy schema <= 5.
   Future<RestoredAuctionSession?> loadSession({
     required String sessionId,
     required List<PlayerEntity> players,
