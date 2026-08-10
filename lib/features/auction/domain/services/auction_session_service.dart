@@ -61,6 +61,7 @@ class AuctionSessionService {
   AuctionSession changeCurrentBid(
     AuctionSession session, {
     required int bid,
+    String? teamId,
     String? eventId,
     DateTime? occurredAt,
   }) {
@@ -87,7 +88,101 @@ class AuctionSessionService {
         occurredAt: timestamp,
         playerId: activePlayerId,
         bid: bid,
+        teamId: teamId,
       ),
+    );
+  }
+
+  AuctionSession placeBid(
+    AuctionSession session, {
+    required String teamId,
+    required int bid,
+    String? eventId,
+    DateTime? occurredAt,
+  }) {
+    _ensureLive(session);
+    final state = snapshot(session);
+    final activeBid = state.activeBid;
+    final team = state.teamsById[teamId];
+    if (activeBid == null) {
+      throw const AuctionSessionException(
+        'Nessun giocatore attualmente chiamato.',
+      );
+    }
+    if (team == null) {
+      throw AuctionSessionException('Squadra $teamId inesistente.');
+    }
+    if (activeBid.leadingTeamId == teamId) {
+      throw AuctionSessionException('${team.name} è già in testa.');
+    }
+
+    final timestamp = (occurredAt ?? DateTime.now()).toUtc();
+    if (session.config.bidDurationSeconds > 0 &&
+        activeBid.isExpiredAt(timestamp)) {
+      throw const AuctionSessionException('Il tempo per le offerte è scaduto.');
+    }
+    final minimumAccepted = activeBid.leadingTeamId == null
+        ? session.config.minimumBid
+        : activeBid.currentBid + session.config.minimumBid;
+    if (bid < minimumAccepted) {
+      throw AuctionSessionException(
+        'La prossima offerta valida è $minimumAccepted crediti.',
+      );
+    }
+    final ceiling = team.maxAffordableBid(session.config);
+    if (bid > ceiling) {
+      throw AuctionSessionException(
+        'Offerta non sostenibile: ${team.name} può arrivare a $ceiling crediti.',
+      );
+    }
+
+    return changeCurrentBid(
+      session,
+      bid: bid,
+      teamId: teamId,
+      eventId: eventId,
+      occurredAt: timestamp,
+    );
+  }
+
+  AuctionSession settleExpiredLot(
+    AuctionSession session, {
+    DateTime? occurredAt,
+  }) {
+    _ensureLive(session);
+    if (session.config.bidDurationSeconds == 0) {
+      throw const AuctionSessionException(
+        'Questa sessione usa la chiusura manuale.',
+      );
+    }
+    final state = snapshot(session);
+    final activeBid = state.activeBid;
+    if (activeBid == null) {
+      throw const AuctionSessionException(
+        'Nessun giocatore attualmente chiamato.',
+      );
+    }
+
+    final timestamp = (occurredAt ?? DateTime.now()).toUtc();
+    if (!activeBid.isExpiredAt(timestamp)) {
+      throw const AuctionSessionException('Il timer non è ancora terminato.');
+    }
+
+    final eventId = 'settle_${activeBid.nominationEventId}';
+    final leadingTeamId = activeBid.leadingTeamId;
+    if (leadingTeamId == null) {
+      return skipActivePlayer(
+        session,
+        eventId: eventId,
+        occurredAt: timestamp,
+      );
+    }
+    return assignActivePlayer(
+      session,
+      teamId: leadingTeamId,
+      price: activeBid.currentBid,
+      eventId: eventId,
+      occurredAt: timestamp,
     );
   }
 

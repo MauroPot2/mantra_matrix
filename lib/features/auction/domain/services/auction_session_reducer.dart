@@ -55,12 +55,22 @@ class AuctionSessionReducer {
             currentBid: session.config.minimumBid,
             updatedAt: event.occurredAt,
             sourceEventId: event.id,
+            nominationEventId: event.id,
+            endsAt: session.config.bidDurationSeconds == 0
+                ? DateTime.utc(9999)
+                : event.occurredAt.add(
+                    Duration(seconds: session.config.bidDurationSeconds),
+                  ),
           );
           break;
 
         case AuctionEventType.bidChanged:
           if (activePlayerId == null || activePlayerId != event.playerId) {
             throw StateError('Evento ${event.id}: cambio prezzo senza chiamata valida.');
+          }
+          final previousBid = activeBid;
+          if (previousBid == null) {
+            throw StateError('Evento ${event.id}: offerta iniziale mancante.');
           }
           // Se era già passato come invenduto, durante la nuova chiamata
           // esce temporaneamente dalla lista dedicata.
@@ -71,6 +81,9 @@ class AuctionSessionReducer {
             currentBid: event.amount!,
             updatedAt: event.occurredAt,
             sourceEventId: event.id,
+            nominationEventId: previousBid.nominationEventId,
+            endsAt: previousBid.endsAt,
+            leadingTeamId: event.teamId ?? previousBid.leadingTeamId,
           );
           break;
 

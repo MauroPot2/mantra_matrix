@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:mantra_matrix/features/auction/domain/entities/auction_event.dart';
+import 'package:mantra_matrix/features/auction/domain/entities/auction_join_preview.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session_summary.dart';
 import 'package:mantra_matrix/features/auction/domain/repositories/auction_session_repository.dart';
@@ -7,6 +10,10 @@ import 'package:mantra_matrix/features/player_database/domain/entities/player_en
 class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
   final Map<String, RestoredAuctionSession> sessions = {};
   final List<AuctionEvent> appendedEvents = [];
+  final Map<String, StreamController<List<AuctionEvent>>> _eventControllers =
+      {};
+  final Map<String, StreamController<AuctionSessionStatus>>
+      _statusControllers = {};
   bool failWrites = false;
 
   @override
@@ -25,10 +32,20 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
   Future<void> appendEvent({
     required String sessionId,
     required AuctionEvent event,
+    required String? expectedLastEventId,
   }) async {
     if (failWrites) throw StateError('write failed');
     final current = sessions[sessionId];
     if (current == null) throw StateError('session not found');
+    if (current.session.status != AuctionSessionStatus.live) {
+      throw StateError('session completed');
+    }
+    final actualLastEventId = current.session.events.isEmpty
+        ? null
+        : current.session.events.last.id;
+    if (actualLastEventId != expectedLastEventId) {
+      throw const AuctionSessionConflictException();
+    }
 
     appendedEvents.add(event);
     sessions[sessionId] = RestoredAuctionSession(
@@ -37,6 +54,33 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
       ),
       myTeamId: current.myTeamId,
     );
+    _eventControllers[sessionId]?.add(
+      List<AuctionEvent>.unmodifiable(
+        sessions[sessionId]!.session.events,
+      ),
+    );
+  }
+
+  @override
+  Stream<List<AuctionEvent>> watchEvents({required String sessionId}) async* {
+    yield List<AuctionEvent>.unmodifiable(
+      sessions[sessionId]?.session.events ?? const [],
+    );
+    final controller = _eventControllers.putIfAbsent(
+      sessionId,
+      () => StreamController<List<AuctionEvent>>.broadcast(),
+    );
+    yield* controller.stream;
+  }
+
+  @override
+  Stream<AuctionSessionStatus> watchStatus({required String sessionId}) async* {
+    yield sessions[sessionId]?.session.status ?? AuctionSessionStatus.completed;
+    final controller = _statusControllers.putIfAbsent(
+      sessionId,
+      () => StreamController<AuctionSessionStatus>.broadcast(),
+    );
+    yield* controller.stream;
   }
 
   @override
@@ -53,10 +97,45 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
         teamCount: session.initialTeams.length,
         initialCredits: session.config.initialCredits,
         rosterSize: session.config.rosterSize,
+        isOwner: true,
+        isShared: session.isShared,
+        joinCode: session.joinCode,
+        memberCount: session.memberTeamIds.length,
       );
     }).toList(growable: false)
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return Stream.value(List.unmodifiable(summaries));
+  }
+
+  @override
+  Future<AuctionJoinPreview> loadJoinPreview({required String joinCode}) async {
+    final item = sessions.values.firstWhere(
+      (item) => item.session.joinCode == joinCode,
+      orElse: () => throw const AuctionSessionPersistenceException(
+        'Codice asta non valido.',
+      ),
+    );
+    return AuctionJoinPreview(
+      sessionId: item.session.id,
+      sessionName: item.session.name,
+      joinCode: joinCode,
+      teams: item.session.initialTeams,
+      claimedTeamIds: item.session.memberTeamIds.values.toSet(),
+    );
+  }
+
+  @override
+  Future<String> joinSession({
+    required String joinCode,
+    required String teamId,
+  }) async {
+    final item = sessions.values.firstWhere(
+      (item) => item.session.joinCode == joinCode,
+      orElse: () => throw const AuctionSessionPersistenceException(
+        'Codice asta non valido.',
+      ),
+    );
+    return item.session.id;
   }
 
   @override
@@ -94,5 +173,6 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
       session: current.session.copyWith(status: status),
       myTeamId: current.myTeamId,
     );
+    _statusControllers[sessionId]?.add(status);
   }
 }

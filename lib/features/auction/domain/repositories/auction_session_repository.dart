@@ -1,4 +1,5 @@
 import 'package:mantra_matrix/features/auction/domain/entities/auction_event.dart';
+import 'package:mantra_matrix/features/auction/domain/entities/auction_join_preview.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session_summary.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
@@ -25,13 +26,30 @@ abstract class AuctionSessionRepository {
   Future<void> appendEvent({
     required String sessionId,
     required AuctionEvent event,
+    required String? expectedLastEventId,
   });
+
+  /// Stream autorevole degli eventi, usato per riallineare tutti i dispositivi
+  /// membri della stessa asta.
+  Stream<List<AuctionEvent>> watchEvents({required String sessionId});
+
+  /// Propaga ai partecipanti la conclusione della sessione anche quando non
+  /// vengono aggiunti altri eventi d'asta.
+  Stream<AuctionSessionStatus> watchStatus({required String sessionId});
 
 
   /// Osserva tutte le aste appartenenti all'utente corrente.
   /// La query concreta deve essere vincolata all'owner UID, così da essere
   /// compatibile con le regole Firestore (le rules non filtrano i risultati).
   Stream<List<AuctionSessionSummary>> watchOwnedSessions();
+
+  Future<AuctionJoinPreview> loadJoinPreview({required String joinCode});
+
+  /// Aggiunge l'utente corrente alla sessione e gli associa una squadra.
+  Future<String> joinSession({
+    required String joinCode,
+    required String teamId,
+  });
 
   /// Ripristina una sessione usando il catalogo giocatori già caricato.
   Future<RestoredAuctionSession?> loadSession({
@@ -57,4 +75,12 @@ class AuctionSessionPersistenceException implements Exception {
 
   @override
   String toString() => message;
+}
+
+class AuctionSessionConflictException
+    extends AuctionSessionPersistenceException {
+  const AuctionSessionConflictException()
+      : super(
+          'L’asta è cambiata su un altro dispositivo. Stato aggiornato: ripeti l’azione.',
+        );
 }

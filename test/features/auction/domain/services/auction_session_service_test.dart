@@ -251,6 +251,79 @@ void main() {
     expect(restored.amount, 17);
     expect(restored.occurredAt, original.occurredAt);
   });
+
+  test('timer condiviso assegna il giocatore alla squadra leader', () {
+    var session = buildSession().copyWith(
+      config: config.copyWith(bidDurationSeconds: 30),
+    );
+    session = service.nominatePlayer(
+      session,
+      playerId: 'p1',
+      eventId: 'timer-call',
+      occurredAt: date(1),
+    );
+    session = service.placeBid(
+      session,
+      teamId: 't2',
+      bid: 7,
+      eventId: 'timer-bid',
+      occurredAt: date(1).add(const Duration(seconds: 5)),
+    );
+
+    final liveState = service.snapshot(session);
+    expect(liveState.activeBid!.leadingTeamId, 't2');
+    expect(
+      liveState.activeBid!.endsAt,
+      date(1).add(const Duration(seconds: 30)),
+    );
+
+    session = service.settleExpiredLot(
+      session,
+      occurredAt: date(1).add(const Duration(seconds: 31)),
+    );
+    final settled = service.snapshot(session);
+    expect(settled.playersById['p1']!.draftedByTeamId, 't2');
+    expect(settled.playersById['p1']!.purchasePrice, 7);
+  });
+
+  test('timer senza offerte sposta il giocatore tra gli svincolati', () {
+    var session = buildSession().copyWith(
+      config: config.copyWith(bidDurationSeconds: 15),
+    );
+    session = service.nominatePlayer(
+      session,
+      playerId: 'p1',
+      eventId: 'empty-call',
+      occurredAt: date(1),
+    );
+    session = service.settleExpiredLot(
+      session,
+      occurredAt: date(1).add(const Duration(seconds: 16)),
+    );
+
+    expect(service.snapshot(session).unsoldPlayerIds, ['p1']);
+  });
+
+  test('una sessione legacy senza timer accetta offerte tardive', () {
+    var session = buildSession().copyWith(
+      config: config.copyWith(bidDurationSeconds: 0),
+    );
+    session = service.nominatePlayer(
+      session,
+      playerId: 'p1',
+      eventId: 'legacy-call',
+      occurredAt: date(1),
+    );
+    session = service.placeBid(
+      session,
+      teamId: 't1',
+      bid: 4,
+      eventId: 'legacy-bid',
+      occurredAt: date(1).add(const Duration(days: 1)),
+    );
+
+    expect(service.snapshot(session).currentBid, 4);
+  });
 }
 
 AuctionSession buildSession() {

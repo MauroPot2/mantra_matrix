@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mantra_matrix/features/auction/domain/entities/auction_join_preview.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session_summary.dart';
 import 'package:mantra_matrix/features/auction/presentation/controllers/auction_controller.dart';
@@ -8,6 +9,7 @@ import 'package:mantra_matrix/features/auction/presentation/screens/auction_flow
 import 'package:mantra_matrix/features/auth/presentation/providers/auth_providers.dart';
 import 'package:mantra_matrix/features/auth/presentation/widgets/auth_user_menu.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
+import 'package:mantra_matrix/features/player_database/presentation/screens/player_catalog_screen.dart';
 
 class AuctionHomeScreen extends ConsumerStatefulWidget {
   final List<PlayerEntity> players;
@@ -57,6 +59,133 @@ class _AuctionHomeScreenState extends ConsumerState<AuctionHomeScreen> {
     );
   }
 
+  Future<void> _joinAuction() async {
+    if (_openingSessionId != null) return;
+    final codeController = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Unisciti a un’asta'),
+        content: TextField(
+          controller: codeController,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          maxLength: 6,
+          decoration: const InputDecoration(
+            labelText: 'Codice invito',
+            hintText: 'ABC234',
+            prefixIcon: Icon(Icons.key_outlined),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(codeController.text),
+            child: const Text('Continua'),
+          ),
+        ],
+      ),
+    );
+    codeController.dispose();
+    if (code == null || code.trim().isEmpty || !mounted) return;
+
+    setState(() => _openingSessionId = 'join');
+    try {
+      final preview = await ref
+          .read(auctionControllerProvider.notifier)
+          .loadJoinPreview(code);
+      if (!mounted) return;
+      final teamId = await _selectJoinTeam(preview);
+      if (teamId == null || !mounted) return;
+
+      final opened = await ref
+          .read(auctionControllerProvider.notifier)
+          .joinSession(
+            joinCode: preview.joinCode,
+            teamId: teamId,
+            players: widget.players,
+          );
+      if (!mounted) return;
+      if (!opened) {
+        throw StateError(
+          ref.read(auctionControllerProvider).errorMessage ??
+              'Impossibile entrare nell’asta.',
+        );
+      }
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => AuctionFlowScreen(players: widget.players),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.toString())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingSessionId = null);
+    }
+  }
+
+  Future<String?> _selectJoinTeam(AuctionJoinPreview preview) {
+    final availableTeams = preview.availableTeams;
+    if (availableTeams.isEmpty) {
+      throw StateError('Tutte le squadre sono già state associate.');
+    }
+    var selectedTeamId = availableTeams.first.id;
+    return showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(preview.sessionName),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Scegli la squadra che controllerai nell’asta.'),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: selectedTeamId,
+                decoration: const InputDecoration(
+                  labelText: 'La tua squadra',
+                  prefixIcon: Icon(Icons.shield_outlined),
+                ),
+                items: availableTeams
+                    .map(
+                      (team) => DropdownMenuItem(
+                        value: team.id,
+                        child: Text(team.name),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() => selectedTeamId = value);
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Annulla'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).pop(selectedTeamId),
+              icon: const Icon(Icons.login),
+              label: const Text('Entra'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final sessions = ref.watch(ownedAuctionSessionsProvider);
@@ -69,7 +198,19 @@ class _AuctionHomeScreenState extends ConsumerState<AuctionHomeScreen> {
           'Le mie aste',
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: const [AuthUserMenu(), SizedBox(width: 8)],
+        actions: [
+          IconButton(
+            tooltip: 'Gestisci listone',
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) => const PlayerCatalogScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.database_outlined),
+          ),
+          const AuthUserMenu(),
+          const SizedBox(width: 8),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openingSessionId == null ? _createAuction : null,
@@ -91,6 +232,7 @@ class _AuctionHomeScreenState extends ConsumerState<AuctionHomeScreen> {
                   child: _WelcomePanel(
                     firstName: firstName,
                     onCreate: _openingSessionId == null ? _createAuction : null,
+                    onJoin: _openingSessionId == null ? _joinAuction : null,
                   ),
                 ),
               ),
@@ -190,8 +332,13 @@ class _AuctionHomeScreenState extends ConsumerState<AuctionHomeScreen> {
 class _WelcomePanel extends StatelessWidget {
   final String firstName;
   final VoidCallback? onCreate;
+  final VoidCallback? onJoin;
 
-  const _WelcomePanel({required this.firstName, required this.onCreate});
+  const _WelcomePanel({
+    required this.firstName,
+    required this.onCreate,
+    required this.onJoin,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -222,16 +369,27 @@ class _WelcomePanel extends StatelessWidget {
               ),
             ],
           );
-          final button = FilledButton.icon(
-            onPressed: onCreate,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Crea nuova asta'),
+          final buttons = Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onJoin,
+                icon: const Icon(Icons.group_add_outlined),
+                label: const Text('Unisciti'),
+              ),
+              FilledButton.icon(
+                onPressed: onCreate,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Crea nuova asta'),
+              ),
+            ],
           );
 
           if (compact) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [copy, const SizedBox(height: 18), button],
+              children: [copy, const SizedBox(height: 18), buttons],
             );
           }
 
@@ -239,7 +397,7 @@ class _WelcomePanel extends StatelessWidget {
             children: [
               Expanded(child: copy),
               const SizedBox(width: 24),
-              button,
+              buttons,
             ],
           );
         },
@@ -361,6 +519,16 @@ class _AuctionCard extends StatelessWidget {
                         icon: Icons.person_outline_rounded,
                         label: '${session.rosterSize} giocatori',
                       ),
+                      if (session.isShared)
+                        _InfoChip(
+                          icon: Icons.hub_outlined,
+                          label: '${session.memberCount} collegati',
+                        ),
+                      if (!session.isOwner)
+                        const _InfoChip(
+                          icon: Icons.group_outlined,
+                          label: 'Ospite',
+                        ),
                     ],
                   ),
                 ],

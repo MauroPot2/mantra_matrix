@@ -15,6 +15,11 @@ class AuctionSession {
   final AuctionSessionStatus status;
   final List<PlayerEntity> initialPlayers;
   final List<FantasyTeamEntity> initialTeams;
+  final List<String> callOrderPlayerIds;
+  final String ownerUid;
+  final String joinCode;
+  final bool isShared;
+  final Map<String, String> memberTeamIds;
   final List<AuctionEvent> events;
 
   const AuctionSession({
@@ -24,6 +29,11 @@ class AuctionSession {
     required this.createdAt,
     required this.initialPlayers,
     required this.initialTeams,
+    this.callOrderPlayerIds = const [],
+    this.ownerUid = '',
+    this.joinCode = '',
+    this.isShared = false,
+    this.memberTeamIds = const {},
     this.status = AuctionSessionStatus.live,
     this.events = const [],
   }) : assert(id != ''),
@@ -37,6 +47,11 @@ class AuctionSession {
     AuctionSessionStatus? status,
     List<PlayerEntity>? initialPlayers,
     List<FantasyTeamEntity>? initialTeams,
+    List<String>? callOrderPlayerIds,
+    String? ownerUid,
+    String? joinCode,
+    bool? isShared,
+    Map<String, String>? memberTeamIds,
     List<AuctionEvent>? events,
   }) {
     return AuctionSession(
@@ -47,8 +62,27 @@ class AuctionSession {
       status: status ?? this.status,
       initialPlayers: initialPlayers ?? this.initialPlayers,
       initialTeams: initialTeams ?? this.initialTeams,
+      callOrderPlayerIds: callOrderPlayerIds ?? this.callOrderPlayerIds,
+      ownerUid: ownerUid ?? this.ownerUid,
+      joinCode: joinCode ?? this.joinCode,
+      isShared: isShared ?? this.isShared,
+      memberTeamIds: memberTeamIds ?? this.memberTeamIds,
       events: events ?? this.events,
     );
+  }
+
+  PlayerEntity? nextPlayer(AuctionSessionSnapshot snapshot) {
+    final uncalledIds = snapshot.uncalledPlayers
+        .map((player) => player.id)
+        .toSet();
+    for (final playerId in callOrderPlayerIds) {
+      if (uncalledIds.contains(playerId)) {
+        return snapshot.playersById[playerId];
+      }
+    }
+    return snapshot.uncalledPlayers.isEmpty
+        ? null
+        : snapshot.uncalledPlayers.first;
   }
 }
 

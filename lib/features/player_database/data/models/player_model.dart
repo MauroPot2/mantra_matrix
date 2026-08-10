@@ -33,7 +33,9 @@ class PlayerModel extends PlayerEntity {
     Map<String, dynamic> json, {
     String? documentId,
   }) {
-    final id = _readString(json, const ['id']) ?? documentId;
+    final id =
+        _readString(json, const ['id', 'understat_id', 'player_id']) ??
+        documentId;
     if (id == null || id.trim().isEmpty) {
       throw const FormatException('PlayerModel: id mancante');
     }
@@ -42,7 +44,7 @@ class PlayerModel extends PlayerEntity {
       id: id,
       name: _requiredString(json, const ['name']),
       team: _requiredString(json, const ['team']),
-      roles: _parseRoles(json['roles'] ?? json['role']),
+      roles: _parseRoles(json['roles'] ?? json['role'] ?? json['position']),
       basePrice: _readInt(
         json,
         const ['fvm', 'base_price', 'basePrice'],
@@ -80,6 +82,34 @@ class PlayerModel extends PlayerEntity {
           _readString(json, const ['drafted_by_team_id', 'draftedByTeamId']),
       purchasePrice:
           _readNullableInt(json, const ['purchase_price', 'purchasePrice']),
+    );
+  }
+
+  factory PlayerModel.fromEntity(PlayerEntity player) {
+    return PlayerModel(
+      id: player.id,
+      name: player.name,
+      team: player.team,
+      roles: player.roles,
+      basePrice: player.basePrice,
+      expectedGoals: player.expectedGoals,
+      expectedAssists: player.expectedAssists,
+      expectedGoals90: player.expectedGoals90,
+      expectedAssists90: player.expectedAssists90,
+      expectedYellowCards: player.expectedYellowCards,
+      historicalMinutes: player.historicalMinutes,
+      expectedGoalsConceded: player.expectedGoalsConceded,
+      expectedCleanSheets: player.expectedCleanSheets,
+      isPenaltyTaker: player.isPenaltyTaker,
+      isFreeKickTaker: player.isFreeKickTaker,
+      isInjured: player.isInjured,
+      isSuspended: player.isSuspended,
+      expectedPoints: player.expectedPoints,
+      polyvalenceMultiplier: player.polyvalenceMultiplier,
+      vorp: player.vorp,
+      status: player.status,
+      draftedByTeamId: player.draftedByTeamId,
+      purchasePrice: player.purchasePrice,
     );
   }
 

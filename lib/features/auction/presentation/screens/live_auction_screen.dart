@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_event.dart';
+import 'package:mantra_matrix/features/auction/domain/entities/bid_snapshot.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_recommendation.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_strategy.dart';
@@ -28,6 +31,7 @@ class LiveAuctionScreen extends ConsumerStatefulWidget {
 class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
   String? _selectedTeamId;
   int _mobileIndex = 0;
+  final Set<String> _automaticSettlementAttempts = {};
 
   @override
   Widget build(BuildContext context) {
@@ -51,11 +55,64 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
         body: Center(child: Text('Nessuna sessione attiva.')),
       );
     }
+    if (session.status == AuctionSessionStatus.completed) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(session.name),
+          actions: const [AuthUserMenu(), SizedBox(width: 8)],
+        ),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Card(
+                margin: const EdgeInsets.all(24),
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.emoji_events_outlined, size: 64),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Asta conclusa',
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Il creatore ha archiviato la sessione. Tutte le '
+                        'assegnazioni restano salvate nello storico.',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 22),
+                      FilledButton.icon(
+                        onPressed: () {
+                          ref
+                              .read(auctionControllerProvider.notifier)
+                              .closeSession();
+                          Navigator.of(context).pop();
+                        },
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        label: const Text('Torna alle aste'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     final myTeam = snapshot.teamsById[state.myTeamId]!;
     // Manteniamo l'ordine inserito nel setup, utile durante la rotazione d'asta.
     final teams = snapshot.teamsById.values.toList(growable: false);
-    final selectedTeamId = teams.any((team) => team.id == _selectedTeamId)
+    final selectedTeamId = state.isOwner &&
+            teams.any((team) => team.id == _selectedTeamId)
         ? _selectedTeamId!
         : state.myTeamId!;
 
@@ -74,7 +131,7 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
       team: myTeam,
       session: session,
       snapshot: snapshot,
-      canNominatePlayer: snapshot.activePlayer == null,
+      canNominatePlayer: state.isOwner && snapshot.activePlayer == null,
       onNominatePlayer: (playerId) {
         ref.read(auctionControllerProvider.notifier).nominatePlayer(playerId);
         if (MediaQuery.sizeOf(context).width < 820) {
@@ -102,9 +159,24 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
           ],
         ),
         actions: [
+          if (session.isShared && session.joinCode.isNotEmpty)
+            TextButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(
+                  ClipboardData(text: session.joinCode),
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Codice asta copiato.')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.hub_outlined, size: 18),
+              label: Text(session.joinCode),
+            ),
           IconButton.filledTonal(
             tooltip: 'Annulla ultima azione',
-            onPressed: snapshot.lastReversibleEvent == null
+            onPressed: !state.isOwner || snapshot.lastReversibleEvent == null
                 ? null
                 : () => ref
                     .read(auctionControllerProvider.notifier)
@@ -114,15 +186,23 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
           const SizedBox(width: 6),
           PopupMenuButton<_AuctionMenuAction>(
             onSelected: (action) {
-              if (action == _AuctionMenuAction.closeSession) {
-                _confirmCloseSession(context);
+              switch (action) {
+                case _AuctionMenuAction.closeSession:
+                  _confirmCloseSession(context);
+                case _AuctionMenuAction.completeSession:
+                  _confirmCompleteSession(context);
               }
             },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
+            itemBuilder: (context) => [
+              const PopupMenuItem(
                 value: _AuctionMenuAction.closeSession,
-                child: Text('Chiudi sessione'),
+                child: Text('Esci dall’asta'),
               ),
+              if (state.isOwner)
+                const PopupMenuItem(
+                  value: _AuctionMenuAction.completeSession,
+                  child: Text('Concludi asta'),
+                ),
             ],
           ),
           const AuthUserMenu(),
@@ -226,6 +306,8 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
   }
 
   Future<void> _showPlayerPicker(AuctionSessionSnapshot snapshot) async {
+    final session = ref.read(auctionControllerProvider).session;
+    if (session == null || !ref.read(auctionControllerProvider).isOwner) return;
     var query = '';
     MantraRole? roleFilter;
     var poolFilter = _PlayerPoolFilter.uncalled;
@@ -246,6 +328,12 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
                   .toList(growable: false),
             };
             final normalized = query.trim().toLowerCase();
+            final callOrder = {
+              for (var index = 0;
+                  index < session.callOrderPlayerIds.length;
+                  index++)
+                session.callOrderPlayerIds[index]: index,
+            };
             final players = sourcePlayers
                 .where((player) {
                   final matchesRole = roleFilter == null ||
@@ -258,7 +346,13 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
                       roles.contains(normalized);
                 })
                 .toList(growable: false)
-              ..sort((a, b) => b.basePrice.compareTo(a.basePrice));
+              ..sort((a, b) {
+                final orderComparison = (callOrder[a.id] ?? (1 << 30))
+                    .compareTo(callOrder[b.id] ?? (1 << 30));
+                return orderComparison != 0
+                    ? orderComparison
+                    : a.name.compareTo(b.name);
+              });
 
             return FractionallySizedBox(
               heightFactor: 0.92,
@@ -400,9 +494,13 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
                                     ],
                                   ),
                                   onTap: () {
-                                    ref
-                                        .read(auctionControllerProvider.notifier)
-                                        .nominatePlayer(player.id);
+                                    final controller = ref.read(
+                                      auctionControllerProvider.notifier,
+                                    );
+                                    if (snapshot.activePlayerId != null) {
+                                      controller.skipActivePlayer();
+                                    }
+                                    controller.nominatePlayer(player.id);
                                     Navigator.of(context).pop();
                                   },
                                 );
@@ -447,6 +545,36 @@ class _LiveAuctionScreenState extends ConsumerState<LiveAuctionScreen> {
       }
     }
   }
+
+  Future<void> _confirmCompleteSession(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Concludere l’asta?'),
+        content: const Text(
+          'L’asta verrà archiviata per tutti i partecipanti e il codice di '
+          'accesso non sarà più utilizzabile.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Concludi'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      ref.read(auctionControllerProvider.notifier).completeSession();
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
 }
 
 class _AuctionCommandPanel extends ConsumerWidget {
@@ -469,30 +597,78 @@ class _AuctionCommandPanel extends ConsumerWidget {
     final snapshot = state.snapshot!;
     final player = snapshot.activePlayer;
     final recommendation = state.recommendation;
+    final nextPlayer = state.session!.nextPlayer(snapshot);
 
     if (player == null) {
       return _EmptyAuctionCard(
         remainingPlayers: snapshot.availablePlayers.length,
-        onPickPlayer: onPickPlayer,
+        nextPlayer: nextPlayer,
+        onPickPlayer: state.isOwner ? onPickPlayer : null,
+        onNominateNext: state.isOwner && nextPlayer != null
+            ? () => ref
+                .read(auctionControllerProvider.notifier)
+                .nominatePlayer(nextPlayer.id)
+            : null,
       );
     }
+
+    final settlementEventId =
+        'settle_${snapshot.activeBid!.nominationEventId}';
+    final wasAlreadySettled = state.session!.events.any(
+          (event) => event.id == settlementEventId,
+        ) ||
+        _automaticSettlementAttempts.contains(settlementEventId);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ActivePlayerHero(player: player, onChangePlayer: onPickPlayer),
+        _ActivePlayerHero(
+          player: player,
+          onChangePlayer: state.isOwner ? onPickPlayer : null,
+        ),
         const SizedBox(height: 14),
-        _BidControl(currentBid: snapshot.currentBid),
+        if (state.session!.config.bidDurationSeconds > 0) ...[
+          _AuctionTimer(
+            bid: snapshot.activeBid!,
+            totalSeconds: state.session!.config.bidDurationSeconds,
+            leadingTeamName: snapshot.activeBid!.leadingTeamId == null
+                ? null
+                : snapshot
+                    .teamsById[snapshot.activeBid!.leadingTeamId!]
+                    ?.name,
+            onExpired: state.isOwner && !wasAlreadySettled
+                ? () {
+                    _automaticSettlementAttempts.add(settlementEventId);
+                    ref
+                        .read(auctionControllerProvider.notifier)
+                        .settleExpiredLot();
+                  }
+                : null,
+          ),
+          const SizedBox(height: 14),
+        ],
+        _BidControl(
+          currentBid: snapshot.currentBid,
+          leadingTeamId: snapshot.activeBid!.leadingTeamId,
+          bidderTeamId: state.isOwner ? selectedTeamId : state.myTeamId!,
+          minimumBid: state.session!.config.minimumBid,
+          teams: teams,
+        ),
         const SizedBox(height: 14),
         if (recommendation != null) ...[
           _RecommendationCard(recommendation: recommendation),
           const SizedBox(height: 14),
         ],
-        _AssignmentCard(
-          selectedTeamId: selectedTeamId,
-          teams: teams,
-          onTeamChanged: onTeamChanged,
-        ),
+        if (state.isOwner)
+          _AssignmentCard(
+            selectedTeamId: selectedTeamId,
+            teams: teams,
+            onTeamChanged: onTeamChanged,
+          )
+        else
+          _ParticipantNotice(
+            team: snapshot.teamsById[state.myTeamId!]!,
+          ),
       ],
     );
   }
@@ -500,11 +676,15 @@ class _AuctionCommandPanel extends ConsumerWidget {
 
 class _EmptyAuctionCard extends StatelessWidget {
   final int remainingPlayers;
-  final VoidCallback onPickPlayer;
+  final PlayerEntity? nextPlayer;
+  final VoidCallback? onPickPlayer;
+  final VoidCallback? onNominateNext;
 
   const _EmptyAuctionCard({
     required this.remainingPlayers,
+    required this.nextPlayer,
     required this.onPickPlayer,
+    required this.onNominateNext,
   });
 
   @override
@@ -535,7 +715,9 @@ class _EmptyAuctionCard extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              'Chi è stato chiamato?',
+              onPickPlayer == null
+                  ? 'In attesa della prossima chiamata'
+                  : 'Chi è stato chiamato?',
               textAlign: TextAlign.center,
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.w900,
@@ -543,15 +725,33 @@ class _EmptyAuctionCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '$remainingPlayers giocatori ancora sul mercato',
+              nextPlayer == null
+                  ? '$remainingPlayers giocatori ancora sul mercato'
+                  : 'Prossimo: ${nextPlayer!.name} · '
+                      '${nextPlayer!.roles.first.name.toUpperCase()}',
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: onPickPlayer,
-              icon: const Icon(Icons.search),
-              label: const Text('Apri ricerca rapida'),
-            ),
+            if (onPickPlayer != null) ...[
+              const SizedBox(height: 24),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                alignment: WrapAlignment.center,
+                children: [
+                  if (onNominateNext != null)
+                    FilledButton.icon(
+                      onPressed: onNominateNext,
+                      icon: const Icon(Icons.skip_next_rounded),
+                      label: const Text('Chiama prossimo'),
+                    ),
+                  OutlinedButton.icon(
+                    onPressed: onPickPlayer,
+                    icon: const Icon(Icons.search),
+                    label: const Text('Ricerca manuale'),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -561,7 +761,7 @@ class _EmptyAuctionCard extends StatelessWidget {
 
 class _ActivePlayerHero extends StatelessWidget {
   final PlayerEntity player;
-  final VoidCallback onChangePlayer;
+  final VoidCallback? onChangePlayer;
 
   const _ActivePlayerHero({
     required this.player,
@@ -615,10 +815,135 @@ class _ActivePlayerHero extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton.filledTonal(
-              tooltip: 'Cambia giocatore',
-              onPressed: onChangePlayer,
-              icon: const Icon(Icons.swap_horiz),
+            if (onChangePlayer != null)
+              IconButton.filledTonal(
+                tooltip: 'Cambia giocatore',
+                onPressed: onChangePlayer,
+                icon: const Icon(Icons.swap_horiz),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AuctionTimer extends StatefulWidget {
+  final BidSnapshot bid;
+  final int totalSeconds;
+  final String? leadingTeamName;
+  final VoidCallback? onExpired;
+
+  const _AuctionTimer({
+    required this.bid,
+    required this.totalSeconds,
+    required this.leadingTeamName,
+    required this.onExpired,
+  });
+
+  @override
+  State<_AuctionTimer> createState() => _AuctionTimerState();
+}
+
+class _AuctionTimerState extends State<_AuctionTimer> {
+  Timer? _timer;
+  Duration _remaining = Duration.zero;
+  bool _expirationNotified = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AuctionTimer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bid.nominationEventId != widget.bid.nominationEventId ||
+        oldWidget.bid.endsAt != widget.bid.endsAt) {
+      _start();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _start() {
+    _timer?.cancel();
+    _expirationNotified = false;
+    final value = widget.bid.endsAt.difference(DateTime.now().toUtc());
+    _remaining = value.isNegative ? Duration.zero : value;
+    if (_remaining == Duration.zero) {
+      _notifyExpiration();
+      return;
+    }
+    _timer = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) => _updateRemaining(),
+    );
+  }
+
+  void _updateRemaining() {
+    final value = widget.bid.endsAt.difference(DateTime.now().toUtc());
+    final next = value.isNegative ? Duration.zero : value;
+    if (mounted) setState(() => _remaining = next);
+
+    if (next == Duration.zero) _notifyExpiration();
+  }
+
+  void _notifyExpiration() {
+    if (_expirationNotified) return;
+    _expirationNotified = true;
+    _timer?.cancel();
+    if (widget.onExpired != null) {
+      scheduleMicrotask(widget.onExpired!);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final milliseconds = _remaining.inMilliseconds;
+    final totalMilliseconds = widget.totalSeconds * 1000;
+    final progress = totalMilliseconds == 0
+        ? 0.0
+        : (milliseconds / totalMilliseconds).clamp(0.0, 1.0).toDouble();
+    final seconds = (milliseconds / 1000).ceil();
+    final urgent = seconds <= 10;
+    final color = urgent ? theme.colorScheme.error : theme.colorScheme.primary;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.timer_outlined, color: color),
+                const SizedBox(width: 9),
+                Text(
+                  seconds == 0 ? 'Asta chiusa' : '$seconds secondi',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const Spacer(),
+                Text(widget.leadingTeamName ?? 'Nessuna offerta'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 10,
+                color: color,
+              ),
             ),
           ],
         ),
@@ -629,8 +954,18 @@ class _ActivePlayerHero extends StatelessWidget {
 
 class _BidControl extends ConsumerStatefulWidget {
   final int currentBid;
+  final String? leadingTeamId;
+  final String bidderTeamId;
+  final int minimumBid;
+  final List<FantasyTeamEntity> teams;
 
-  const _BidControl({required this.currentBid});
+  const _BidControl({
+    required this.currentBid,
+    required this.leadingTeamId,
+    required this.bidderTeamId,
+    required this.minimumBid,
+    required this.teams,
+  });
 
   @override
   ConsumerState<_BidControl> createState() => _BidControlState();
@@ -665,6 +1000,15 @@ class _BidControlState extends ConsumerState<_BidControl> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final matchingLeaders = widget.leadingTeamId == null
+        ? const <FantasyTeamEntity>[]
+        : widget.teams
+            .where((team) => team.id == widget.leadingTeamId)
+            .toList(growable: false);
+    final leader = matchingLeaders.isEmpty ? null : matchingLeaders.first;
+    final bidder = widget.teams.firstWhere(
+      (team) => team.id == widget.bidderTeamId,
+    );
 
     return Card(
       child: Padding(
@@ -683,17 +1027,31 @@ class _BidControlState extends ConsumerState<_BidControl> {
                   ),
                 ),
                 const Spacer(),
-                Text('${widget.currentBid} cr'),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${widget.currentBid} cr',
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    Text(
+                      leader == null
+                          ? 'Nessuna offerta'
+                          : 'Leader: ${leader.name}',
+                      style: theme.textTheme.labelSmall,
+                    ),
+                  ],
+                ),
               ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Offri come ${bidder.name}',
+              style: theme.textTheme.labelMedium,
             ),
             const SizedBox(height: 14),
             Row(
               children: [
-                _BidButton(
-                  label: '−1',
-                  onPressed: () => _changeBy(-1),
-                ),
-                const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -755,17 +1113,27 @@ class _BidControlState extends ConsumerState<_BidControl> {
   void _commit() {
     final parsed = int.tryParse(_controller.text);
     if (parsed == null) return;
-    ref.read(auctionControllerProvider.notifier).setCurrentBid(parsed);
+    ref.read(auctionControllerProvider.notifier).placeBid(
+          teamId: widget.bidderTeamId,
+          bid: parsed,
+        );
     _focusNode.unfocus();
   }
 
   void _changeBy(int amount) {
-    final current = int.tryParse(_controller.text) ?? widget.currentBid;
-    final session = ref.read(auctionControllerProvider).session;
-    final minimum = session?.config.minimumBid ?? 1;
-    final next = (current + amount).clamp(minimum, 1 << 30).toInt();
+    final openingAmount = amount > widget.minimumBid
+        ? amount
+        : widget.minimumBid;
+    final next = widget.leadingTeamId == null
+        ? (openingAmount > widget.currentBid
+            ? openingAmount
+            : widget.currentBid)
+        : widget.currentBid + amount;
     _controller.text = next.toString();
-    ref.read(auctionControllerProvider.notifier).setCurrentBid(next);
+    ref.read(auctionControllerProvider.notifier).placeBid(
+          teamId: widget.bidderTeamId,
+          bid: next,
+        );
   }
 }
 
@@ -1006,6 +1374,26 @@ class _AssignmentCard extends ConsumerWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ParticipantNotice extends StatelessWidget {
+  final FantasyTeamEntity team;
+
+  const _ParticipantNotice({required this.team});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: const CircleAvatar(child: Icon(Icons.visibility_outlined)),
+        title: Text('Collegato come ${team.name}'),
+        subtitle: const Text(
+          'Puoi rilanciare in tempo reale. Chiamate, assegnazioni e annullamenti '
+          'restano sotto il controllo del creatore dell’asta.',
         ),
       ),
     );
@@ -2303,7 +2691,7 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
-enum _AuctionMenuAction { closeSession }
+enum _AuctionMenuAction { closeSession, completeSession }
 
 String _roles(PlayerEntity player) =>
     player.roles.map((role) => role.name.toUpperCase()).join('/');

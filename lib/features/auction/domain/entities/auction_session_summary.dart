@@ -10,6 +10,10 @@ class AuctionSessionSummary {
   final int teamCount;
   final int initialCredits;
   final int rosterSize;
+  final bool isOwner;
+  final bool isShared;
+  final String joinCode;
+  final int memberCount;
 
   const AuctionSessionSummary({
     required this.id,
@@ -21,6 +25,10 @@ class AuctionSessionSummary {
     required this.teamCount,
     required this.initialCredits,
     required this.rosterSize,
+    this.isOwner = true,
+    this.isShared = false,
+    this.joinCode = '',
+    this.memberCount = 1,
   });
 
   bool get canResume => status == AuctionSessionStatus.live;

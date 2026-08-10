@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mantra_matrix/features/auction/domain/entities/auction_call_order.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_config.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_strategy.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/fantasy_team_entity.dart';
@@ -34,6 +35,9 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
 
   String _primaryFormation = '4-2-3-1';
   final Set<String> _secondaryFormations = {'4-3-3', '4-4-2'};
+  int _bidDurationSeconds = 30;
+  AuctionCallOrderMode _callOrderMode = AuctionCallOrderMode.randomAll;
+  bool _isShared = true;
 
   @override
   void initState() {
@@ -102,6 +106,14 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
                   const SizedBox(height: 16),
                   _SetupSection(
                     number: '03',
+                    title: 'Sessione e chiamate',
+                    subtitle:
+                        'Condivisione, timer per ogni calciatore e ordine del listone.',
+                    child: _buildAuctionMode(),
+                  ),
+                  const SizedBox(height: 16),
+                  _SetupSection(
+                    number: '04',
                     title: 'Strategia tattica',
                     subtitle:
                         'Il modulo principale pesa più delle alternative nei consigli.',
@@ -109,7 +121,7 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
                   ),
                   const SizedBox(height: 16),
                   _SetupSection(
-                    number: '04',
+                    number: '05',
                     title: 'Piano economico',
                     subtitle:
                         'Definisce i guardrail dei tetti, senza impedirti di sforare manualmente.',
@@ -390,6 +402,60 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
     );
   }
 
+  Widget _buildAuctionMode() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          value: _isShared,
+          onChanged: (value) => setState(() => _isShared = value),
+          title: const Text('Asta condivisa'),
+          subtitle: const Text(
+            'Genera un codice di 6 caratteri. Ogni partecipante entra con il '
+            'proprio account e sceglie la sua squadra.',
+          ),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<int>(
+          initialValue: _bidDurationSeconds,
+          decoration: const InputDecoration(
+            labelText: 'Durata timer per giocatore',
+            prefixIcon: Icon(Icons.timer_outlined),
+          ),
+          items: const [15, 30, 45, 60, 90, 120]
+              .map(
+                (seconds) => DropdownMenuItem(
+                  value: seconds,
+                  child: Text('$seconds secondi'),
+                ),
+              )
+              .toList(growable: false),
+          onChanged: (value) {
+            if (value != null) setState(() => _bidDurationSeconds = value);
+          },
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Modello di chiamata',
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        const SizedBox(height: 6),
+        for (final mode in AuctionCallOrderMode.values)
+          RadioListTile<AuctionCallOrderMode>(
+            contentPadding: EdgeInsets.zero,
+            value: mode,
+            groupValue: _callOrderMode,
+            onChanged: (value) {
+              if (value != null) setState(() => _callOrderMode = value);
+            },
+            title: Text(mode.label),
+            subtitle: Text(mode.description),
+          ),
+      ],
+    );
+  }
+
   Widget _buildBudgets({
     required int credits,
     required int total,
@@ -548,6 +614,8 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
             initialCredits: credits,
             rosterSize: rosterSize,
             minimumBid: minimumBid,
+            bidDurationSeconds: _bidDurationSeconds,
+            callOrderMode: _callOrderMode,
             primaryFormationName: _primaryFormation,
             secondaryFormationNames: _secondaryFormations,
             departmentBudgets: {
@@ -557,6 +625,7 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
           ),
           players: widget.players,
           teams: teams,
+          isShared: _isShared,
         );
   }
 }

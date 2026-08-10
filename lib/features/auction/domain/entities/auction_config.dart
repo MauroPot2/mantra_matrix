@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:mantra_matrix/features/auction/domain/entities/auction_call_order.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_strategy.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
 
@@ -13,6 +14,8 @@ class AuctionConfig {
 
   final int rosterSize;
   final int minimumBid;
+  final int bidDurationSeconds;
+  final AuctionCallOrderMode callOrderMode;
   final Map<MantraRole, int> targetCoverage;
 
   /// Strategia tattica scelta nel setup.
@@ -31,6 +34,8 @@ class AuctionConfig {
     required this.initialCredits,
     required this.rosterSize,
     required this.minimumBid,
+    this.bidDurationSeconds = 30,
+    this.callOrderMode = AuctionCallOrderMode.randomAll,
     this.valuationReferenceCredits = 1000,
     this.targetCoverage = const {},
     this.primaryFormationName = '4-2-3-1',
@@ -43,6 +48,10 @@ class AuctionConfig {
        assert(valuationReferenceCredits > 0),
        assert(rosterSize > 0),
        assert(minimumBid > 0),
+       assert(
+         bidDurationSeconds == 0 ||
+             (bidDurationSeconds >= 5 && bidDurationSeconds <= 600),
+       ),
        assert(maxStrategicPremium >= 0),
        assert(maxStrategicDiscount >= 0 && maxStrategicDiscount < 1),
        assert(maxPlayerBudgetShare > 0 && maxPlayerBudgetShare <= 1);
@@ -77,6 +86,8 @@ class AuctionConfig {
     int valuationReferenceCredits = 1000,
     int rosterSize = 25,
     int minimumBid = 1,
+    int bidDurationSeconds = 30,
+    AuctionCallOrderMode callOrderMode = AuctionCallOrderMode.randomAll,
     String primaryFormationName = '4-2-3-1',
     Set<String> secondaryFormationNames = const {'4-3-3', '4-4-2'},
     Map<PlayerDepartment, int>? departmentBudgets,
@@ -86,6 +97,8 @@ class AuctionConfig {
       valuationReferenceCredits: valuationReferenceCredits,
       rosterSize: rosterSize,
       minimumBid: minimumBid,
+      bidDurationSeconds: bidDurationSeconds,
+      callOrderMode: callOrderMode,
       primaryFormationName: primaryFormationName,
       secondaryFormationNames: Set.unmodifiable(secondaryFormationNames),
       departmentBudgets: Map.unmodifiable(
@@ -127,6 +140,8 @@ class AuctionConfig {
     int? valuationReferenceCredits,
     int? rosterSize,
     int? minimumBid,
+    int? bidDurationSeconds,
+    AuctionCallOrderMode? callOrderMode,
     Map<MantraRole, int>? targetCoverage,
     String? primaryFormationName,
     Set<String>? secondaryFormationNames,
@@ -141,6 +156,8 @@ class AuctionConfig {
           valuationReferenceCredits ?? this.valuationReferenceCredits,
       rosterSize: rosterSize ?? this.rosterSize,
       minimumBid: minimumBid ?? this.minimumBid,
+      bidDurationSeconds: bidDurationSeconds ?? this.bidDurationSeconds,
+      callOrderMode: callOrderMode ?? this.callOrderMode,
       targetCoverage: targetCoverage ?? this.targetCoverage,
       primaryFormationName:
           primaryFormationName ?? this.primaryFormationName,
@@ -162,6 +179,8 @@ class AuctionConfig {
       'valuation_reference_credits': valuationReferenceCredits,
       'roster_size': rosterSize,
       'minimum_bid': minimumBid,
+      'bid_duration_seconds': bidDurationSeconds,
+      'call_order_mode': callOrderMode.name,
       'target_coverage': {
         for (final entry in targetCoverage.entries)
           entry.key.name: entry.value,
@@ -217,6 +236,14 @@ class AuctionConfig {
           (json['valuation_reference_credits'] as num?)?.toInt() ?? 1000,
       rosterSize: (json['roster_size'] as num).toInt(),
       minimumBid: (json['minimum_bid'] as num).toInt(),
+      // Le sessioni create prima dell'introduzione del timer restano manuali,
+      // evitando una scadenza immediata al primo ripristino.
+      bidDurationSeconds:
+          (json['bid_duration_seconds'] as num?)?.toInt() ?? 0,
+      callOrderMode: AuctionCallOrderMode.values.firstWhere(
+        (mode) => mode.name == json['call_order_mode']?.toString(),
+        orElse: () => AuctionCallOrderMode.randomAll,
+      ),
       targetCoverage: coverage,
       primaryFormationName:
           json['primary_formation_name']?.toString() ?? '4-2-3-1',
