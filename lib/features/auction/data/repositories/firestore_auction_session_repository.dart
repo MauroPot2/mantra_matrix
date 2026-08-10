@@ -5,10 +5,11 @@ import 'package:mantra_matrix/features/auction/domain/entities/auction_session.d
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session_summary.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/fantasy_team_entity.dart';
 import 'package:mantra_matrix/features/auction/domain/repositories/auction_session_repository.dart';
+import 'package:mantra_matrix/features/player_database/data/models/player_model.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
 
 class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
-  static const _schemaVersion = 5;
+  static const _schemaVersion = 6;
   static const _sessionsCollection = 'auction_sessions';
   static const _eventsCollection = 'events';
 
@@ -38,6 +39,16 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       'created_at': Timestamp.fromDate(session.createdAt.toUtc()),
       'updated_at': FieldValue.serverTimestamp(),
       'config': session.config.toJson(),
+
+      // Schema v6: ogni nuova asta conserva il proprio snapshot giocatori.
+      // In questo modo il ripristino non dipende più dalla collezione globale
+      // `/players` e il dataset della sessione resta stabile nel tempo.
+      'initial_players': session.initialPlayers
+          .map((player) => PlayerModel.fromEntity(player).toJson())
+          .toList(growable: false),
+
+      // Manteniamo gli ID durante la transizione per poter leggere sessioni
+      // create con schema <= 5 e per facilitare eventuali migrazioni future.
       'initial_player_ids': session.initialPlayers
           .map((player) => player.id)
           .toList(growable: false),
@@ -102,7 +113,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     final document = await _sessions.doc(sessionId).get();
     if (!document.exists) return null;
 
-    return _restoreFromDocument(document, players: players);
+    return _restoreFromDocument(document, legacyPlayers: players);
   }
 
   @override
@@ -134,7 +145,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
         return bDate.compareTo(aDate);
       });
 
-    return _restoreFromDocument(documents.first, players: players);
+    return _restoreFromDocument(documents.first, legacyPlayers: players);
   }
 
   @override
@@ -169,7 +180,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       id: document.id,
       name: data['name']?.toString().trim().isNotEmpty == true
           ? data['name'].toString().trim()
-          : 'Asta Mantra',
+          : 'Asta Matrix',
       status: _readStatus(data['status']),
       createdAt: createdAt,
       updatedAt: updatedAt,
@@ -182,7 +193,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
 
   Future<RestoredAuctionSession> _restoreFromDocument(
     DocumentSnapshot<Map<String, dynamic>> document, {
-    required List<PlayerEntity> players,
+    required List<PlayerEntity> legacyPlayers,
   }) async {
     final data = document.data();
     if (data == null) {
@@ -205,23 +216,16 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       );
     }
 
-    final playerIds = _readStringList(data['initial_player_ids']);
-    final playersById = {for (final player in players) player.id: player};
-    final missingIds = playerIds
-        .where((id) => !playersById.containsKey(id))
-        .toList(growable: false);
+    // Le sessioni v6+ sono autosufficienti: il catalogo globale non serve più.
+    // Per gli schemi precedenti manteniamo temporaneamente il vecchio percorso
+    // basato su `initial_player_ids`, così nessuna asta già creata viene persa.
+    final embeddedPlayers = _readEmbeddedPlayers(data['initial_players']);
+    final initialPlayers = embeddedPlayers ??
+        _restoreLegacyPlayers(
+          data['initial_player_ids'],
+          legacyPlayers: legacyPlayers,
+        );
 
-    if (missingIds.isNotEmpty) {
-      final preview = missingIds.take(5).join(', ');
-      throw AuctionSessionPersistenceException(
-        'Impossibile ripristinare la sessione: '
-        '${missingIds.length} giocatori non sono più nel catalogo ($preview).',
-      );
-    }
-
-    final initialPlayers = playerIds
-        .map((id) => playersById[id]!)
-        .toList(growable: false);
     final initialTeams = _readTeams(data['initial_teams']);
     final myTeamId = data['my_team_id']?.toString();
 
@@ -246,7 +250,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
 
     final session = AuctionSession(
       id: document.id,
-      name: data['name']?.toString() ?? 'Asta Mantra',
+      name: data['name']?.toString() ?? 'Asta Matrix',
       config: AuctionConfig.fromJson(
         Map<String, dynamic>.from(data['config'] as Map),
       ),
@@ -258,6 +262,57 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     );
 
     return RestoredAuctionSession(session: session, myTeamId: myTeamId);
+  }
+
+  static List<PlayerEntity>? _readEmbeddedPlayers(Object? rawPlayers) {
+    if (rawPlayers == null) return null;
+    if (rawPlayers is! List) {
+      throw const AuctionSessionPersistenceException(
+        'Lo snapshot dei giocatori salvato non è valido.',
+      );
+    }
+    if (rawPlayers.isEmpty) {
+      throw const AuctionSessionPersistenceException(
+        'Lo snapshot dei giocatori salvato è vuoto.',
+      );
+    }
+
+    try {
+      return rawPlayers.map((rawPlayer) {
+        if (rawPlayer is! Map) {
+          throw const FormatException('record giocatore non valido');
+        }
+        return PlayerModel.fromJson(Map<String, dynamic>.from(rawPlayer));
+      }).toList(growable: false);
+    } on FormatException catch (error) {
+      throw AuctionSessionPersistenceException(
+        'Snapshot giocatori non valido: ${error.message}',
+      );
+    }
+  }
+
+  static List<PlayerEntity> _restoreLegacyPlayers(
+    Object? rawPlayerIds, {
+    required List<PlayerEntity> legacyPlayers,
+  }) {
+    final playerIds = _readStringList(rawPlayerIds);
+    final playersById = {for (final player in legacyPlayers) player.id: player};
+    final missingIds = playerIds
+        .where((id) => !playersById.containsKey(id))
+        .toList(growable: false);
+
+    if (missingIds.isNotEmpty) {
+      final preview = missingIds.take(5).join(', ');
+      throw AuctionSessionPersistenceException(
+        'Impossibile ripristinare la sessione legacy: '
+        '${missingIds.length} giocatori non sono più nel vecchio catalogo '
+        '($preview).',
+      );
+    }
+
+    return playerIds
+        .map((id) => playersById[id]!)
+        .toList(growable: false);
   }
 
   static Map<String, dynamic> _teamToJson(FantasyTeamEntity team) {
