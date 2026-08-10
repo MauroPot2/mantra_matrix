@@ -19,7 +19,7 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -37,8 +37,18 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Save resolved dependency lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: resolved-pubspec-lock
+          path: pubspec.lock
+          retention-days: 3
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos
 
       - name: Test
         run: flutter test
+
+      - name: Android debug build smoke test
+        run: flutter build apk --debug --no-pub
