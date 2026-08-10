@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_config.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_event.dart';
+import 'package:mantra_matrix/features/auction/domain/entities/auction_live_state.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session_summary.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/fantasy_team_entity.dart';
@@ -13,6 +14,8 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   static const _sessionsCollection = 'auction_sessions';
   static const _eventsCollection = 'events';
   static const _playersCollection = 'players';
+  static const _liveCollection = 'live';
+  static const _liveDocument = 'current';
   static const _snapshotReady = 'ready';
   static const _snapshotWriting = 'writing';
   static const _batchSize = 400;
@@ -56,10 +59,18 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
           .toList(growable: false),
     };
 
-    // Il documento sessione resta piccolo. I giocatori vengono persistiti in
-    // una subcollection dedicata, evitando il limite Firestore di 1 MiB per
-    // documento e rendendo il dataset scalabile e indipendente dal catalogo.
     await sessionRef.set(data, SetOptions(merge: true));
+    await sessionRef.collection(_liveCollection).doc(_liveDocument).set({
+      'schema_version': _schemaVersion,
+      'phase': AuctionClockPhase.idle.name,
+      'active_player_id': null,
+      'current_bid': 0,
+      'started_at': null,
+      'extension_seconds': 0,
+      'revision': 0,
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
     await _savePlayerSnapshot(sessionRef, session.initialPlayers);
     await sessionRef.set(
       {
@@ -81,7 +92,8 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       final batch = _firestore.batch();
 
       for (final player in players.sublist(start, end)) {
-        final playerRef = sessionRef.collection(_playersCollection).doc(player.id);
+        final playerRef =
+            sessionRef.collection(_playersCollection).doc(player.id);
         batch.set(playerRef, {
           ...PlayerModel.fromEntity(player).toJson(),
           'schema_version': _schemaVersion,
@@ -96,15 +108,18 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   Future<void> appendEvent({
     required String sessionId,
     required AuctionEvent event,
+    required AuctionSessionSnapshot snapshotAfterEvent,
   }) async {
     final sessionRef = _sessions.doc(sessionId);
     final eventRef = sessionRef.collection(_eventsCollection).doc(event.id);
+    final liveRef = sessionRef.collection(_liveCollection).doc(_liveDocument);
     final batch = _firestore.batch();
 
     batch.set(eventRef, {
       ...event.toJson(),
       'schema_version': _schemaVersion,
       'created_by_uid': _ownerUid,
+      'server_occurred_at': FieldValue.serverTimestamp(),
     });
     batch.set(
       sessionRef,
@@ -114,8 +129,139 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       },
       SetOptions(merge: true),
     );
+    batch.set(
+      liveRef,
+      _livePatchFor(event, snapshotAfterEvent),
+      SetOptions(merge: true),
+    );
 
     await batch.commit();
+  }
+
+  Map<String, dynamic> _livePatchFor(
+    AuctionEvent event,
+    AuctionSessionSnapshot snapshot,
+  ) {
+    final common = <String, dynamic>{
+      'schema_version': _schemaVersion,
+      'revision': FieldValue.increment(1),
+      'updated_at': FieldValue.serverTimestamp(),
+    };
+
+    switch (event.type) {
+      case AuctionEventType.playerNominated:
+        return {
+          ...common,
+          'phase': AuctionClockPhase.running.name,
+          'active_player_id': snapshot.activePlayerId,
+          'current_bid': snapshot.currentBid,
+          'started_at': FieldValue.serverTimestamp(),
+          'extension_seconds': 0,
+        };
+
+      case AuctionEventType.bidRaised:
+        return {
+          ...common,
+          'phase': AuctionClockPhase.running.name,
+          'active_player_id': snapshot.activePlayerId,
+          'current_bid': snapshot.currentBid,
+          'extension_seconds': FieldValue.increment(
+            event.clockExtensionSeconds ?? 0,
+          ),
+        };
+
+      case AuctionEventType.bidChanged:
+        return {
+          ...common,
+          'phase': AuctionClockPhase.running.name,
+          'active_player_id': snapshot.activePlayerId,
+          'current_bid': snapshot.currentBid,
+        };
+
+      case AuctionEventType.playerAssigned:
+      case AuctionEventType.playerSkipped:
+      case AuctionEventType.playerMarkedUnavailable:
+        return {
+          ...common,
+          'phase': AuctionClockPhase.idle.name,
+          'active_player_id': null,
+          'current_bid': 0,
+          'started_at': null,
+          'extension_seconds': 0,
+        };
+
+      case AuctionEventType.eventReverted:
+        if (snapshot.activePlayerId == null) {
+          return {
+            ...common,
+            'phase': AuctionClockPhase.idle.name,
+            'active_player_id': null,
+            'current_bid': 0,
+            'started_at': null,
+            'extension_seconds': 0,
+          };
+        }
+        // Un undo che riapre una chiamata riparte con un countdown completo.
+        // È intenzionale: evita di riaprire una chiamata già scaduta.
+        return {
+          ...common,
+          'phase': AuctionClockPhase.running.name,
+          'active_player_id': snapshot.activePlayerId,
+          'current_bid': snapshot.currentBid,
+          'started_at': FieldValue.serverTimestamp(),
+          'extension_seconds': 0,
+        };
+    }
+  }
+
+  @override
+  Stream<List<AuctionEvent>> watchEvents({required String sessionId}) {
+    return _sessions
+        .doc(sessionId)
+        .collection(_eventsCollection)
+        .orderBy('occurred_at')
+        .snapshots()
+        .map((snapshot) {
+          return List<AuctionEvent>.unmodifiable(
+            snapshot.docs.map((document) {
+              final raw = Map<String, dynamic>.from(document.data());
+              raw['id'] ??= document.id;
+              return AuctionEvent.fromJson(raw);
+            }),
+          );
+        });
+  }
+
+  @override
+  Stream<AuctionLiveState?> watchLiveState({required String sessionId}) {
+    return _sessions
+        .doc(sessionId)
+        .collection(_liveCollection)
+        .doc(_liveDocument)
+        .snapshots()
+        .map((document) {
+          final data = document.data();
+          if (!document.exists || data == null) return null;
+          return _liveStateFromJson(data);
+        });
+  }
+
+  AuctionLiveState _liveStateFromJson(Map<String, dynamic> data) {
+    final phaseName = data['phase']?.toString();
+    final phase = AuctionClockPhase.values.firstWhere(
+      (item) => item.name == phaseName,
+      orElse: () => AuctionClockPhase.idle,
+    );
+
+    return AuctionLiveState(
+      phase: phase,
+      activePlayerId: data['active_player_id']?.toString(),
+      currentBid: (data['current_bid'] as num?)?.toInt() ?? 0,
+      startedAt: _readNullableDate(data['started_at']),
+      extensionSeconds: (data['extension_seconds'] as num?)?.toInt() ?? 0,
+      revision: (data['revision'] as num?)?.toInt() ?? 0,
+      updatedAt: _readNullableDate(data['updated_at']),
+    );
   }
 
   @override
@@ -176,14 +322,35 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   Future<void> updateStatus({
     required String sessionId,
     required AuctionSessionStatus status,
-  }) {
-    return _sessions.doc(sessionId).set(
+  }) async {
+    final sessionRef = _sessions.doc(sessionId);
+    final batch = _firestore.batch();
+    batch.set(
+      sessionRef,
       {
         'status': status.name,
         'updated_at': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),
     );
+
+    if (status != AuctionSessionStatus.live) {
+      batch.set(
+        sessionRef.collection(_liveCollection).doc(_liveDocument),
+        {
+          'phase': AuctionClockPhase.idle.name,
+          'active_player_id': null,
+          'current_bid': 0,
+          'started_at': null,
+          'extension_seconds': 0,
+          'revision': FieldValue.increment(1),
+          'updated_at': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    }
+
+    await batch.commit();
   }
 
   AuctionSessionSummary? _summaryFromDocument(
@@ -303,12 +470,9 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       );
     }
 
-    // Compatibilità con la breve versione intermedia v6 che salvava lo
-    // snapshot nel documento sessione.
     final embeddedPlayers = _readEmbeddedPlayers(data['initial_players']);
     if (embeddedPlayers != null) return embeddedPlayers;
 
-    // Schema <= 5: ultimo ponte di compatibilità con il vecchio catalogo.
     return _restoreLegacyPlayers(
       data['initial_player_ids'],
       legacyPlayers: legacyPlayers,
@@ -319,7 +483,8 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     DocumentSnapshot<Map<String, dynamic>> document, {
     required List<String> expectedIds,
   }) async {
-    final snapshot = await document.reference.collection(_playersCollection).get();
+    final snapshot =
+        await document.reference.collection(_playersCollection).get();
     final playersById = <String, PlayerEntity>{};
 
     try {
