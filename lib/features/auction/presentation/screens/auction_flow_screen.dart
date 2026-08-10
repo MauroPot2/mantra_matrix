@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mantra_matrix/features/auction/presentation/controllers/auction_controller.dart';
-import 'package:mantra_matrix/features/auction/presentation/screens/auction_setup_screen.dart';
+import 'package:mantra_matrix/features/auction/presentation/screens/independent_auction_setup_screen.dart';
 import 'package:mantra_matrix/features/auction/presentation/screens/live_auction_screen.dart';
 import 'package:mantra_matrix/features/auction/presentation/widgets/shared_auction_clock.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
@@ -269,7 +269,7 @@ class _ImportedAuctionSetup extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        AuctionSetupScreen(players: players),
+        IndependentAuctionSetupScreen(players: players),
         Positioned(
           right: 16,
           bottom: 16,
