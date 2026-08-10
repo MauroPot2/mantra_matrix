@@ -15,7 +15,7 @@ class AuctionBootstrapScreen extends ConsumerWidget {
     final legacyPlayers = ref.watch(allPlayersProvider);
 
     return AuctionHomeScreen(
-      players: legacyPlayers.valueOrNull ?? const <PlayerEntity>[],
+      players: legacyPlayers.asData?.value ?? const <PlayerEntity>[],
     );
   }
 }
