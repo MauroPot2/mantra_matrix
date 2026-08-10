@@ -1,4 +1,5 @@
 import 'package:mantra_matrix/features/auction/domain/entities/auction_event.dart';
+import 'package:mantra_matrix/features/auction/domain/entities/auction_live_state.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session_summary.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
@@ -14,32 +15,37 @@ class RestoredAuctionSession {
 }
 
 abstract class AuctionSessionRepository {
-  /// Crea o aggiorna i metadati della sessione.
-  /// Deve essere idempotente: richiamarlo con lo stesso ID non deve duplicare dati.
+  /// Crea o aggiorna i metadati della sessione e il relativo snapshot dati.
   Future<void> saveSession({
     required AuctionSession session,
     required String myTeamId,
   });
 
-  /// Accoda un singolo evento immutabile alla sessione.
+  /// Accoda un singolo evento immutabile alla sessione e aggiorna lo stato
+  /// live condiviso nello stesso batch Firestore.
   Future<void> appendEvent({
     required String sessionId,
     required AuctionEvent event,
+    required AuctionSessionSnapshot snapshotAfterEvent,
   });
 
+  /// Stream realtime del log eventi. Serve a riallineare più dispositivi senza
+  /// polling e senza duplicare il motore di riduzione lato cloud.
+  Stream<List<AuctionEvent>> watchEvents({required String sessionId});
+
+  /// Stato minimale ad alta frequenza: giocatore attivo, prezzo e clock.
+  Stream<AuctionLiveState?> watchLiveState({required String sessionId});
 
   /// Osserva tutte le aste appartenenti all'utente corrente.
-  /// La query concreta deve essere vincolata all'owner UID, così da essere
-  /// compatibile con le regole Firestore (le rules non filtrano i risultati).
   Stream<List<AuctionSessionSummary>> watchOwnedSessions();
 
-  /// Ripristina una sessione usando il catalogo giocatori già caricato.
+  /// Ripristina una sessione. [players] è usato esclusivamente come ponte per
+  /// le sessioni legacy schema <= 5.
   Future<RestoredAuctionSession?> loadSession({
     required String sessionId,
     required List<PlayerEntity> players,
   });
 
-  /// Recupera la sessione live più recente, se presente.
   Future<RestoredAuctionSession?> loadLatestActiveSession({
     required List<PlayerEntity> players,
   });
