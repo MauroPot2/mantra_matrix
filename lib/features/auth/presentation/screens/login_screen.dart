@@ -587,7 +587,7 @@ class _LoginHero extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         Text(
-          'Mantra Matrix',
+          'Asta Matrix',
           textAlign: compact ? TextAlign.center : TextAlign.start,
           style: textTheme.displaySmall?.copyWith(
             fontWeight: FontWeight.w900,
@@ -595,7 +595,7 @@ class _LoginHero extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          'Il tuo muretto d’asta: consigli, scarsità, moduli, budget e cronologia sempre sincronizzati.',
+          'Il tuo muretto d’asta indipendente: consigli, scarsità, moduli, budget e cronologia sempre sincronizzati.',
           textAlign: compact ? TextAlign.center : TextAlign.start,
           style: textTheme.titleMedium?.copyWith(
             color: colorScheme.onSurfaceVariant,
@@ -613,8 +613,8 @@ class _LoginHero extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         const _FeatureRow(
-          icon: Icons.devices_outlined,
-          text: 'Accedi con Google oppure email e password.',
+          icon: Icons.dataset_outlined,
+          text: 'Scegli tu il dataset da usare per ogni nuova asta.',
         ),
       ],
     );
