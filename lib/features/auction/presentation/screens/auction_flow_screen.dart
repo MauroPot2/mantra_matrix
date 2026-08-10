@@ -84,12 +84,13 @@ class _LiveAuctionWithClock extends StatelessWidget {
   Widget build(BuildContext context) {
     final session = state.session!;
     final hasActivePlayer = state.snapshot?.activePlayerId != null;
+    final clockCanReadCloud = state.lastPersistedAt != null;
     final compact = MediaQuery.sizeOf(context).width < 820;
 
     return Stack(
       children: [
         const IndependentLiveAuctionScreen(),
-        if (hasActivePlayer)
+        if (hasActivePlayer && clockCanReadCloud)
           Positioned(
             top: compact ? 86 : 76,
             right: 12,
