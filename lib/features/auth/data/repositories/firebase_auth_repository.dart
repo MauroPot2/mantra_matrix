@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:mantra_matrix/features/auth/domain/repositories/auth_repository.dart';
 
@@ -11,13 +10,11 @@ class FirebaseAuthRepository implements AuthRepository {
 
   bool _googleInitialized = false;
 
-  FirebaseAuthRepository({
-    required FirebaseAuth firebaseAuth,
-    required FirebaseFirestore firestore,
+  FirebaseAuthRepository(
+    this._firebaseAuth,
+    this._firestore, {
     GoogleSignIn? googleSignIn,
-  }) : _firebaseAuth = firebaseAuth,
-       _firestore = firestore,
-       _googleSignIn = googleSignIn ?? GoogleSignIn.instance;
+  }) : _googleSignIn = googleSignIn ?? GoogleSignIn.instance;
 
   @override
   User? get currentUser => _firebaseAuth.currentUser;
