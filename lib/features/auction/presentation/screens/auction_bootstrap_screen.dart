@@ -12,7 +12,7 @@ class AuctionBootstrapScreen extends ConsumerWidget {
     // Il vecchio catalogo viene caricato soltanto come ponte di compatibilità
     // per le sessioni create con schema <= 5. Non blocca più l'avvio dell'app
     // e non viene usato per creare nuove aste.
-    final legacyPlayers = ref.watch(allPlayersProvider);
+    final legacyPlayers = ref.watch(legacyPlayersProvider);
 
     return AuctionHomeScreen(
       players: legacyPlayers.asData?.value ?? const <PlayerEntity>[],
