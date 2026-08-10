@@ -38,9 +38,7 @@ service cloud.firestore {
       allow delete: if isSelf(uid);
     }
 
-    // Compatibilità temporanea con le sessioni schema <= 5.
-    // Le nuove aste non dipendono più da questa collezione e nessun client può
-    // modificarla. Potrà essere rimossa una volta migrate/chiuse le aste legacy.
+    // Ponte temporaneo per il solo ripristino delle sessioni schema <= 5.
     match /players/{playerId} {
       allow read: if signedIn();
       allow write: if false;
@@ -64,6 +62,14 @@ service cloud.firestore {
       allow delete: if isSessionOwner(sessionId);
 
       match /players/{playerId} {
+        allow read: if isSessionMember(sessionId);
+        allow create, update: if isSessionOwner(sessionId);
+        allow delete: if false;
+      }
+
+      // Stato effimero e minimale dell'asta. Il client proprietario aggiorna
+      // questo documento nello stesso batch dell'evento immutabile.
+      match /live/{liveDocument} {
         allow read: if isSessionMember(sessionId);
         allow create, update: if isSessionOwner(sessionId);
         allow delete: if false;
