@@ -116,7 +116,7 @@ class _PlayerImportScreenState extends State<PlayerImportScreen> {
   void _continue() {
     final result = _result;
     if (result == null || !result.isValid) return;
-    Navigator.of(context).pop<List<PlayerEntity>>(context, result.players);
+    Navigator.of(context).pop<List<PlayerEntity>>(result.players);
   }
 
   @override
@@ -342,7 +342,7 @@ class _MappingField extends StatelessWidget {
     final normalizedValue = value != null && value!.isNotEmpty ? value : null;
 
     return DropdownButtonFormField<String>(
-      value: normalizedValue,
+      initialValue: normalizedValue,
       isExpanded: true,
       decoration: InputDecoration(
         labelText: requiredField ? '$label *' : label,
