@@ -19,11 +19,11 @@ void main() {
     });
 
     test('new serialization writes base_price and never writes fvm', () {
-      const player = PlayerModel(
+      final player = PlayerModel(
         id: 'matrix-1',
         name: 'Matrix Player',
         team: 'TEST',
-        roles: [MantraRole.dc, MantraRole.b],
+        roles: const [MantraRole.dc, MantraRole.b],
         basePrice: 12,
         dataOrigin: PlayerDataOrigin.matrix,
         expectedGoals: 1.2,
@@ -42,11 +42,11 @@ void main() {
     });
 
     test('round trip preserves user import provenance', () {
-      const original = PlayerModel(
+      final original = PlayerModel(
         id: 'import-1',
         name: 'Imported Player',
         team: 'TEST',
-        roles: [MantraRole.c, MantraRole.t],
+        roles: const [MantraRole.c, MantraRole.t],
         basePrice: 1,
         dataOrigin: PlayerDataOrigin.userImport,
         sourceLabel: 'csv-import',
