@@ -3,6 +3,7 @@ import 'package:mantra_matrix/features/player_database/data/models/player_model.
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
 import 'package:mantra_matrix/features/player_database/domain/repositories/player_repository.dart';
 
+/// Adapter temporaneo di sola lettura per il vecchio `/players` globale.
 class FirestorePlayerRepository implements PlayerRepository {
   final FirebaseFirestore firestore;
 
@@ -12,7 +13,7 @@ class FirestorePlayerRepository implements PlayerRepository {
       firestore.collection('players');
 
   @override
-  Future<List<PlayerEntity>> fetchAllPlayers() async {
+  Future<List<PlayerEntity>> fetchLegacyPlayers() async {
     final snapshot = await _players.get();
     final players = <PlayerEntity>[];
 
@@ -26,26 +27,12 @@ class FirestorePlayerRepository implements PlayerRepository {
         );
       } on FormatException catch (error) {
         throw FormatException(
-          'Documento players/${document.id} non valido: ${error.message}',
+          'Documento legacy players/${document.id} non valido: ${error.message}',
         );
       }
     }
 
     players.sort((a, b) => a.name.compareTo(b.name));
     return List<PlayerEntity>.unmodifiable(players);
-  }
-
-  @override
-  Future<void> updatePlayerAuctionState(
-    String playerId,
-    DraftStatus status,
-    String? teamId,
-    int? price,
-  ) async {
-    await _players.doc(playerId).update({
-      'status': status.name,
-      'drafted_by_team_id': teamId,
-      'purchase_price': price,
-    });
   }
 }
