@@ -11,6 +11,9 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
   bool failWrites = false;
 
   @override
+  final String instanceId = 'test-instance';
+
+  @override
   Future<void> saveSession({
     required AuctionSession session,
     required String myTeamId,
@@ -49,7 +52,23 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
 
   @override
   Stream<AuctionLiveState?> watchLiveState({required String sessionId}) {
-    return const Stream<AuctionLiveState?>.empty();
+    return Stream.value(
+      AuctionLiveState(
+        phase: AuctionClockPhase.idle,
+        activePlayerId: null,
+        currentBid: 0,
+        startedAt: null,
+        extensionSeconds: 0,
+        revision: 0,
+        updatedAt: DateTime.now().toUtc(),
+        controllerInstanceId: instanceId,
+      ),
+    );
+  }
+
+  @override
+  Future<void> claimControl({required String sessionId}) async {
+    if (failWrites) throw StateError('write failed');
   }
 
   @override
