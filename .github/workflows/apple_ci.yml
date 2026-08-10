@@ -1,0 +1,55 @@
+name: Apple Build CI
+
+on:
+  push:
+    branches:
+      - main
+      - feature/source-agnostic-player-data
+    paths:
+      - lib/**
+      - ios/**
+      - macos/**
+      - pubspec.yaml
+      - pubspec.lock
+      - .github/workflows/apple_ci.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - lib/**
+      - ios/**
+      - macos/**
+      - pubspec.yaml
+      - pubspec.lock
+      - .github/workflows/apple_ci.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-build-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apple-builds:
+    runs-on: macos-15
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS release without signing
+        run: flutter build ios --release --no-codesign --no-pub
+
+      - name: Build macOS release
+        run: flutter build macos --release --no-pub
