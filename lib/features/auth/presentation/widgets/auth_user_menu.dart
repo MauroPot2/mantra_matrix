@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mantra_matrix/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:mantra_matrix/features/auth/presentation/providers/auth_providers.dart';
+import 'package:mantra_matrix/features/auth/presentation/screens/legal_info_screen.dart';
 
-enum _AuthMenuAction { signOut }
+enum _AuthMenuAction { info, signOut }
 
 class AuthUserMenu extends ConsumerWidget {
   const AuthUserMenu({super.key});
@@ -22,7 +23,12 @@ class AuthUserMenu extends ConsumerWidget {
       tooltip: 'Account',
       enabled: !authUi.isLoading,
       onSelected: (action) async {
-        if (action != _AuthMenuAction.signOut) return;
+        if (action == _AuthMenuAction.info) {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute(builder: (_) => const LegalInfoScreen()),
+          );
+          return;
+        }
 
         final confirmed = await showDialog<bool>(
           context: context,
@@ -65,9 +71,17 @@ class AuthUserMenu extends ConsumerWidget {
           ),
         ),
         const PopupMenuDivider(),
-        PopupMenuItem<_AuthMenuAction>(
+        const PopupMenuItem<_AuthMenuAction>(
+          value: _AuthMenuAction.info,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.info_outline_rounded),
+            title: Text('Informazioni e dati'),
+          ),
+        ),
+        const PopupMenuItem<_AuthMenuAction>(
           value: _AuthMenuAction.signOut,
-          child: const ListTile(
+          child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.logout),
             title: Text('Esci dall’account'),
