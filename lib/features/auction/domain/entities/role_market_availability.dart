@@ -35,10 +35,12 @@ class RoleMarketAvailability {
     required this.candidateIsTop,
     required List<PlayerEntity> remainingPlayerEntries,
     required List<PlayerEntity> remainingTopPlayerEntries,
-  })  : remainingPlayerEntries =
-            List<PlayerEntity>.unmodifiable(remainingPlayerEntries),
-        remainingTopPlayerEntries =
-            List<PlayerEntity>.unmodifiable(remainingTopPlayerEntries);
+  }) : remainingPlayerEntries = List<PlayerEntity>.unmodifiable(
+         remainingPlayerEntries,
+       ),
+       remainingTopPlayerEntries = List<PlayerEntity>.unmodifiable(
+         remainingTopPlayerEntries,
+       );
 
   double get remainingShare =>
       catalogPlayers == 0 ? 0 : remainingPlayers / catalogPlayers;

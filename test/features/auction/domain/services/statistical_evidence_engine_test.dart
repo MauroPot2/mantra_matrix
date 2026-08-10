@@ -14,10 +14,7 @@ void main() {
         player(id: 'peer-$index', vorp: index.toDouble(), minutes: 2200),
     ];
 
-    final result = engine.analyze(
-      player: target,
-      catalogPlayers: catalog,
-    );
+    final result = engine.analyze(player: target, catalogPlayers: catalog);
 
     expect(result.metricSource, StatisticalMetricSource.vorp);
     expect(result.peerCount, 9);
@@ -46,10 +43,7 @@ void main() {
         ),
     ];
 
-    final result = engine.analyze(
-      player: target,
-      catalogPlayers: catalog,
-    );
+    final result = engine.analyze(player: target, catalogPlayers: catalog);
 
     expect(result.metricSource, StatisticalMetricSource.adjustedPer90);
     expect(result.adjustedScore, lessThan(result.rawScore));
@@ -65,16 +59,10 @@ void main() {
         player(id: 'peer-$index', vorp: index.toDouble(), minutes: 2200),
     ];
 
-    final result = engine.analyze(
-      player: target,
-      catalogPlayers: catalog,
-    );
+    final result = engine.analyze(player: target, catalogPlayers: catalog);
 
     expect(result.percentile, inInclusiveRange(0.45, 0.65));
-    expect(
-      result.qualityBand,
-      isNot(StatisticalQualityBand.strongAdvantage),
-    );
+    expect(result.qualityBand, isNot(StatisticalQualityBand.strongAdvantage));
   });
 }
 

@@ -1,0 +1,196 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && (
+        request.auth.token.get('admin', false) == true ||
+        (
+          exists(
+            /databases/$(database)/documents/users/$(request.auth.uid)
+          ) &&
+          get(
+            /databases/$(database)/documents/users/$(request.auth.uid)
+          ).data.get('is_admin', false) == true
+        )
+      );
+    }
+
+    function isSessionMemberData(data) {
+      return signedIn() &&
+        request.auth.uid in data.member_uids;
+    }
+
+    function isSessionOwnerData(data) {
+      return signedIn() &&
+        data.get('owner_uid', '') == request.auth.uid;
+    }
+
+    function sessionData(sessionId) {
+      return get(
+        /databases/$(database)/documents/auction_sessions/$(sessionId)
+      ).data;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.uid == userId &&
+        request.resource.data.keys().hasOnly([
+          'uid',
+          'display_name',
+          'email',
+          'photo_url',
+          'provider_ids',
+          'created_at',
+          'last_login_at'
+        ]);
+      allow update: if signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'display_name',
+          'email',
+          'photo_url',
+          'provider_ids',
+          'last_login_at'
+        ]);
+      allow delete: if false;
+    }
+
+    match /players/{playerId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /player_catalogs/{catalogId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /auction_invites/{joinCode} {
+      // Il codice è l'ID del documento: si può leggere un invito preciso, ma
+      // non enumerare l'intera collezione.
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() &&
+        request.resource.data.owner_uid == request.auth.uid;
+      allow update, delete: if signedIn() &&
+        resource.data.owner_uid == request.auth.uid;
+    }
+
+    match /auction_sessions/{sessionId} {
+      function validSelfJoin() {
+        let oldMembers = resource.data.member_uids;
+        let newMembers = request.resource.data.member_uids;
+        let oldTeams = resource.data.member_team_ids;
+        let newTeams = request.resource.data.member_team_ids;
+        let selectedTeam = newTeams[request.auth.uid];
+        return signedIn() &&
+          resource.data.join_enabled == true &&
+          resource.data.status == 'live' &&
+          !(request.auth.uid in oldMembers) &&
+          newMembers is list &&
+          newMembers.toSet().size() == newMembers.size() &&
+          newMembers.hasAll(oldMembers) &&
+          request.auth.uid in newMembers &&
+          newMembers.size() == oldMembers.size() + 1 &&
+          newTeams is map &&
+          newTeams.size() == oldTeams.size() + 1 &&
+          newTeams.diff(oldTeams).affectedKeys().hasOnly([
+            request.auth.uid
+          ]) &&
+          selectedTeam is string &&
+          selectedTeam in resource.data.team_ids &&
+          !oldTeams.values().hasAny([selectedTeam]) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'member_uids',
+            'member_team_ids',
+            'updated_at'
+          ]);
+      }
+
+      function validMemberEventPointer() {
+        let eventId = request.resource.data.last_event_id;
+        let event = getAfter(
+          /databases/$(database)/documents/auction_sessions/$(sessionId)/events/$(eventId)
+        ).data;
+        return isSessionMemberData(resource.data) &&
+          resource.data.status == 'live' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'last_event_id',
+            'last_event_sequence',
+            'updated_at'
+          ]) &&
+          event.type == 'bidChanged' &&
+          event.created_by_uid == request.auth.uid &&
+          event.team_id == resource.data.member_team_ids[request.auth.uid];
+      }
+
+      allow create: if signedIn() &&
+        request.resource.data.owner_uid == request.auth.uid &&
+        request.resource.data.member_uids is list &&
+        isSessionMemberData(request.resource.data) &&
+        request.resource.data.member_team_ids[request.auth.uid] is string;
+
+      // `saveSession` legge prima il documento dentro una transazione. La
+      // lettura del documento ancora inesistente deve quindi essere ammessa,
+      // altrimenti la creazione viene bloccata prima della regola `create`.
+      allow get: if signedIn() && (
+        !exists(
+          /databases/$(database)/documents/auction_sessions/$(sessionId)
+        ) ||
+        isSessionOwnerData(resource.data) ||
+        isSessionMemberData(resource.data) ||
+        resource.data.get('join_enabled', false) == true
+      );
+      allow list: if isSessionOwnerData(resource.data) ||
+        isSessionMemberData(resource.data);
+
+      allow update: if isSessionOwnerData(resource.data) ||
+        validSelfJoin() ||
+        validMemberEventPointer();
+      allow delete: if isSessionOwnerData(resource.data);
+
+      match /events/{eventId} {
+        function validMemberBid(session) {
+          return request.resource.data.type == 'bidChanged' &&
+            request.resource.data.team_id ==
+              session.member_team_ids[request.auth.uid] &&
+            request.resource.data.amount is int &&
+            request.resource.data.amount > 0;
+        }
+
+        function linkedSessionWasUpdated() {
+          return getAfter(
+            /databases/$(database)/documents/auction_sessions/$(sessionId)
+          ).data.last_event_id == eventId;
+        }
+
+        allow read: if isSessionOwnerData(sessionData(sessionId)) ||
+          isSessionMemberData(sessionData(sessionId));
+        allow create: if sessionData(sessionId).status == 'live' && (
+            isSessionOwnerData(sessionData(sessionId)) ||
+            isSessionMemberData(sessionData(sessionId))
+          ) &&
+          request.resource.data.id == eventId &&
+          request.resource.data.created_by_uid == request.auth.uid &&
+          linkedSessionWasUpdated() &&
+          (
+            isSessionOwnerData(sessionData(sessionId)) ||
+            validMemberBid(sessionData(sessionId))
+          );
+        allow update, delete: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

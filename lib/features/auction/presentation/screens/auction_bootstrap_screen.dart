@@ -12,9 +12,8 @@ class AuctionBootstrapScreen extends ConsumerWidget {
     final players = ref.watch(allPlayersProvider);
 
     return players.when(
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      ),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (error, stackTrace) => Scaffold(
         appBar: AppBar(
           title: const Text('Mantra Matrix'),

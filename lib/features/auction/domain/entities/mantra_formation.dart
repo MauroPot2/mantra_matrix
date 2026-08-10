@@ -4,10 +4,7 @@ class MantraFormationSlot {
   final String label;
   final Set<MantraRole> acceptedRoles;
 
-  const MantraFormationSlot({
-    required this.label,
-    required this.acceptedRoles,
-  });
+  const MantraFormationSlot({required this.label, required this.acceptedRoles});
 
   bool accepts(PlayerEntity player) {
     assert(
@@ -74,8 +71,7 @@ class FormationImpact {
     required this.secondaryMissingReduction,
   });
 
-  int get bestMissingReduction =>
-      closestMissingBefore - closestMissingAfter;
+  int get bestMissingReduction => closestMissingBefore - closestMissingAfter;
 
   bool get improvesAnything =>
       unlockedFormationNames.isNotEmpty ||

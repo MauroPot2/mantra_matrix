@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:mantra_matrix/features/auction/domain/entities/auction_call_order.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_strategy.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
 
@@ -13,6 +14,9 @@ class AuctionConfig {
 
   final int rosterSize;
   final int minimumBid;
+  final int bidDurationSeconds;
+  final int bidExtensionSeconds;
+  final AuctionCallOrderMode callOrderMode;
   final Map<MantraRole, int> targetCoverage;
 
   /// Strategia tattica scelta nel setup.
@@ -31,6 +35,9 @@ class AuctionConfig {
     required this.initialCredits,
     required this.rosterSize,
     required this.minimumBid,
+    this.bidDurationSeconds = 30,
+    this.bidExtensionSeconds = 5,
+    this.callOrderMode = AuctionCallOrderMode.randomAll,
     this.valuationReferenceCredits = 1000,
     this.targetCoverage = const {},
     this.primaryFormationName = '4-2-3-1',
@@ -43,6 +50,11 @@ class AuctionConfig {
        assert(valuationReferenceCredits > 0),
        assert(rosterSize > 0),
        assert(minimumBid > 0),
+       assert(
+         bidDurationSeconds == 0 ||
+             (bidDurationSeconds >= 5 && bidDurationSeconds <= 600),
+       ),
+       assert(bidExtensionSeconds >= 0 && bidExtensionSeconds <= 60),
        assert(maxStrategicPremium >= 0),
        assert(maxStrategicDiscount >= 0 && maxStrategicDiscount < 1),
        assert(maxPlayerBudgetShare > 0 && maxPlayerBudgetShare <= 1);
@@ -55,7 +67,8 @@ class AuctionConfig {
     return math.max(minimumBid, scaled).toInt();
   }
 
-  int get plannedBudgetTotal => departmentBudgets.values.fold(0, (a, b) => a + b);
+  int get plannedBudgetTotal =>
+      departmentBudgets.values.fold(0, (a, b) => a + b);
 
   bool get isDepartmentBudgetPlanBalanced =>
       departmentBudgets.isNotEmpty && plannedBudgetTotal == initialCredits;
@@ -67,16 +80,18 @@ class AuctionConfig {
     return departmentBudgets[department] ?? 0;
   }
 
-  int get maxPlayerBudget => math.max(
-        minimumBid,
-        (initialCredits * maxPlayerBudgetShare).round(),
-      ).toInt();
+  int get maxPlayerBudget => math
+      .max(minimumBid, (initialCredits * maxPlayerBudgetShare).round())
+      .toInt();
 
   factory AuctionConfig.standardMantra({
     int initialCredits = 500,
     int valuationReferenceCredits = 1000,
     int rosterSize = 25,
     int minimumBid = 1,
+    int bidDurationSeconds = 30,
+    int bidExtensionSeconds = 5,
+    AuctionCallOrderMode callOrderMode = AuctionCallOrderMode.randomAll,
     String primaryFormationName = '4-2-3-1',
     Set<String> secondaryFormationNames = const {'4-3-3', '4-4-2'},
     Map<PlayerDepartment, int>? departmentBudgets,
@@ -86,6 +101,9 @@ class AuctionConfig {
       valuationReferenceCredits: valuationReferenceCredits,
       rosterSize: rosterSize,
       minimumBid: minimumBid,
+      bidDurationSeconds: bidDurationSeconds,
+      bidExtensionSeconds: bidExtensionSeconds,
+      callOrderMode: callOrderMode,
       primaryFormationName: primaryFormationName,
       secondaryFormationNames: Set.unmodifiable(secondaryFormationNames),
       departmentBudgets: Map.unmodifiable(
@@ -127,6 +145,9 @@ class AuctionConfig {
     int? valuationReferenceCredits,
     int? rosterSize,
     int? minimumBid,
+    int? bidDurationSeconds,
+    int? bidExtensionSeconds,
+    AuctionCallOrderMode? callOrderMode,
     Map<MantraRole, int>? targetCoverage,
     String? primaryFormationName,
     Set<String>? secondaryFormationNames,
@@ -141,18 +162,17 @@ class AuctionConfig {
           valuationReferenceCredits ?? this.valuationReferenceCredits,
       rosterSize: rosterSize ?? this.rosterSize,
       minimumBid: minimumBid ?? this.minimumBid,
+      bidDurationSeconds: bidDurationSeconds ?? this.bidDurationSeconds,
+      bidExtensionSeconds: bidExtensionSeconds ?? this.bidExtensionSeconds,
+      callOrderMode: callOrderMode ?? this.callOrderMode,
       targetCoverage: targetCoverage ?? this.targetCoverage,
-      primaryFormationName:
-          primaryFormationName ?? this.primaryFormationName,
+      primaryFormationName: primaryFormationName ?? this.primaryFormationName,
       secondaryFormationNames:
           secondaryFormationNames ?? this.secondaryFormationNames,
       departmentBudgets: departmentBudgets ?? this.departmentBudgets,
-      maxStrategicPremium:
-          maxStrategicPremium ?? this.maxStrategicPremium,
-      maxStrategicDiscount:
-          maxStrategicDiscount ?? this.maxStrategicDiscount,
-      maxPlayerBudgetShare:
-          maxPlayerBudgetShare ?? this.maxPlayerBudgetShare,
+      maxStrategicPremium: maxStrategicPremium ?? this.maxStrategicPremium,
+      maxStrategicDiscount: maxStrategicDiscount ?? this.maxStrategicDiscount,
+      maxPlayerBudgetShare: maxPlayerBudgetShare ?? this.maxPlayerBudgetShare,
     );
   }
 
@@ -162,9 +182,11 @@ class AuctionConfig {
       'valuation_reference_credits': valuationReferenceCredits,
       'roster_size': rosterSize,
       'minimum_bid': minimumBid,
+      'bid_duration_seconds': bidDurationSeconds,
+      'bid_extension_seconds': bidExtensionSeconds,
+      'call_order_mode': callOrderMode.name,
       'target_coverage': {
-        for (final entry in targetCoverage.entries)
-          entry.key.name: entry.value,
+        for (final entry in targetCoverage.entries) entry.key.name: entry.value,
       },
       'primary_formation_name': primaryFormationName,
       'secondary_formation_names': secondaryFormationNames.toList(),
@@ -180,6 +202,8 @@ class AuctionConfig {
 
   factory AuctionConfig.fromJson(Map<String, dynamic> json) {
     final initialCredits = (json['initial_credits'] as num).toInt();
+    final bidDurationSeconds =
+        (json['bid_duration_seconds'] as num?)?.toInt() ?? 0;
     final rawCoverage = json['target_coverage'];
     final coverage = <MantraRole, int>{};
 
@@ -217,6 +241,18 @@ class AuctionConfig {
           (json['valuation_reference_credits'] as num?)?.toInt() ?? 1000,
       rosterSize: (json['roster_size'] as num).toInt(),
       minimumBid: (json['minimum_bid'] as num).toInt(),
+      // Le sessioni create prima dell'introduzione del timer restano manuali,
+      // evitando una scadenza immediata al primo ripristino.
+      bidDurationSeconds: bidDurationSeconds,
+      // Le aste temporizzate già salvate ricevono la nuova regola standard;
+      // le sessioni manuali legacy continuano invece a non avere proroghe.
+      bidExtensionSeconds:
+          (json['bid_extension_seconds'] as num?)?.toInt() ??
+          (bidDurationSeconds > 0 ? 5 : 0),
+      callOrderMode: AuctionCallOrderMode.values.firstWhere(
+        (mode) => mode.name == json['call_order_mode']?.toString(),
+        orElse: () => AuctionCallOrderMode.randomAll,
+      ),
       targetCoverage: coverage,
       primaryFormationName:
           json['primary_formation_name']?.toString() ?? '4-2-3-1',

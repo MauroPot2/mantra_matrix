@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mantra_matrix/features/auction/domain/entities/auction_call_order.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_config.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_strategy.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/fantasy_team_entity.dart';
@@ -12,14 +13,10 @@ import 'package:mantra_matrix/features/player_database/domain/entities/player_en
 class AuctionSetupScreen extends ConsumerStatefulWidget {
   final List<PlayerEntity> players;
 
-  const AuctionSetupScreen({
-    required this.players,
-    super.key,
-  });
+  const AuctionSetupScreen({required this.players, super.key});
 
   @override
-  ConsumerState<AuctionSetupScreen> createState() =>
-      _AuctionSetupScreenState();
+  ConsumerState<AuctionSetupScreen> createState() => _AuctionSetupScreenState();
 }
 
 class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
@@ -34,6 +31,9 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
 
   String _primaryFormation = '4-2-3-1';
   final Set<String> _secondaryFormations = {'4-3-3', '4-4-2'};
+  int _bidDurationSeconds = 30;
+  AuctionCallOrderMode _callOrderMode = AuctionCallOrderMode.randomAll;
+  bool _isShared = true;
 
   @override
   void initState() {
@@ -69,10 +69,7 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nuova asta'),
-        actions: const [
-          AuthUserMenu(),
-          SizedBox(width: 8),
-        ],
+        actions: const [AuthUserMenu(), SizedBox(width: 8)],
       ),
       body: SafeArea(
         child: LayoutBuilder(
@@ -102,6 +99,14 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
                   const SizedBox(height: 16),
                   _SetupSection(
                     number: '03',
+                    title: 'Sessione e chiamate',
+                    subtitle:
+                        'Condivisione, timer per ogni calciatore e ordine del listone.',
+                    child: _buildAuctionMode(),
+                  ),
+                  const SizedBox(height: 16),
+                  _SetupSection(
+                    number: '04',
                     title: 'Strategia tattica',
                     subtitle:
                         'Il modulo principale pesa più delle alternative nei consigli.',
@@ -109,7 +114,7 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
                   ),
                   const SizedBox(height: 16),
                   _SetupSection(
-                    number: '04',
+                    number: '05',
                     title: 'Piano economico',
                     subtitle:
                         'Definisce i guardrail dei tetti, senza impedirti di sforare manualmente.',
@@ -170,7 +175,8 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
                           secondaryFormations: _secondaryFormations,
                           budgets: {
                             for (final department in PlayerDepartment.values)
-                              department: int.tryParse(
+                              department:
+                                  int.tryParse(
                                     _budgetControllers[department]?.text ?? '',
                                   ) ??
                                   0,
@@ -322,8 +328,8 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
     final count = requestedCount < 0
         ? 0
         : requestedCount > 20
-            ? 20
-            : requestedCount;
+        ? 20
+        : requestedCount;
     while (_teamNameControllers.length < count) {
       _teamNameControllers.add(TextEditingController());
     }
@@ -390,6 +396,76 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
     );
   }
 
+  Widget _buildAuctionMode() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          value: _isShared,
+          onChanged: (value) => setState(() => _isShared = value),
+          title: const Text('Asta condivisa'),
+          subtitle: const Text(
+            'Genera un codice di 6 caratteri. Ogni partecipante entra con il '
+            'proprio account e sceglie la sua squadra.',
+          ),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<int>(
+          initialValue: _bidDurationSeconds,
+          decoration: const InputDecoration(
+            labelText: 'Durata timer per giocatore',
+            prefixIcon: Icon(Icons.timer_outlined),
+          ),
+          items: const [15, 30, 45, 60, 90, 120]
+              .map(
+                (seconds) => DropdownMenuItem(
+                  value: seconds,
+                  child: Text('$seconds secondi'),
+                ),
+              )
+              .toList(growable: false),
+          onChanged: (value) {
+            if (value != null) setState(() => _bidDurationSeconds = value);
+          },
+        ),
+        const SizedBox(height: 8),
+        const ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.more_time_rounded),
+          title: Text('Proroga anti-sniping attiva'),
+          subtitle: Text(
+            'Ogni offerta valida aggiunge automaticamente 5 secondi al timer.',
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Modello di chiamata',
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        const SizedBox(height: 6),
+        RadioGroup<AuctionCallOrderMode>(
+          groupValue: _callOrderMode,
+          onChanged: (value) {
+            if (value != null) setState(() => _callOrderMode = value);
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final mode in AuctionCallOrderMode.values)
+                RadioListTile<AuctionCallOrderMode>(
+                  contentPadding: EdgeInsets.zero,
+                  value: mode,
+                  title: Text(mode.label),
+                  subtitle: Text(mode.description),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildBudgets({
     required int credits,
     required int total,
@@ -423,8 +499,8 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
                   color: balanced
                       ? Colors.green.shade500
                       : total > credits
-                          ? theme.colorScheme.error
-                          : theme.colorScheme.primary,
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.primary,
                 ),
               ),
             ),
@@ -436,8 +512,8 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
                 color: balanced
                     ? Colors.green.shade500
                     : total > credits
-                        ? theme.colorScheme.error
-                        : null,
+                    ? theme.colorScheme.error
+                    : null,
               ),
             ),
           ],
@@ -454,10 +530,7 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
   }) {
     return TextFormField(
       controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-      ),
+      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
       validator: validator,
     );
   }
@@ -474,10 +547,7 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
       controller: controller,
       keyboardType: TextInputType.number,
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-      ),
+      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
       onChanged: onChanged,
       validator: (value) {
         final parsed = int.tryParse(value?.trim() ?? '');
@@ -498,11 +568,10 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
   }
 
   int get _budgetTotal => PlayerDepartment.values.fold(
-        0,
-        (total, department) =>
-            total +
-            (int.tryParse(_budgetControllers[department]?.text ?? '') ?? 0),
-      );
+    0,
+    (total, department) =>
+        total + (int.tryParse(_budgetControllers[department]?.text ?? '') ?? 0),
+  );
 
   void _applyAutomaticBudgets() {
     final credits = int.tryParse(_creditsController.text) ?? 500;
@@ -541,13 +610,17 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
         ),
     ];
 
-    ref.read(auctionControllerProvider.notifier).startSession(
+    ref
+        .read(auctionControllerProvider.notifier)
+        .startSession(
           sessionName: _auctionNameController.text.trim(),
           myTeamId: myTeamId,
           config: AuctionConfig.standardMantra(
             initialCredits: credits,
             rosterSize: rosterSize,
             minimumBid: minimumBid,
+            bidDurationSeconds: _bidDurationSeconds,
+            callOrderMode: _callOrderMode,
             primaryFormationName: _primaryFormation,
             secondaryFormationNames: _secondaryFormations,
             departmentBudgets: {
@@ -557,6 +630,7 @@ class _AuctionSetupScreenState extends ConsumerState<AuctionSetupScreen> {
           ),
           players: widget.players,
           teams: teams,
+          isShared: _isShared,
         );
   }
 }

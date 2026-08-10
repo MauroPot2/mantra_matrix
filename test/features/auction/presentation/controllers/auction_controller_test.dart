@@ -28,21 +28,16 @@ void main() {
       ),
       players: [player('p1'), player('p2')],
       teams: const [
-        FantasyTeamEntity(
-          id: 'me',
-          name: 'Matrix FC',
-          creditsRemaining: 100,
-        ),
-        FantasyTeamEntity(
-          id: 'rival',
-          name: 'Rival FC',
-          creditsRemaining: 100,
-        ),
+        FantasyTeamEntity(id: 'me', name: 'Matrix FC', creditsRemaining: 100),
+        FantasyTeamEntity(id: 'rival', name: 'Rival FC', creditsRemaining: 100),
       ],
     );
 
     controller.nominatePlayer('p1');
-    expect(container.read(auctionControllerProvider).snapshot!.activePlayerId, 'p1');
+    expect(
+      container.read(auctionControllerProvider).snapshot!.activePlayerId,
+      'p1',
+    );
     expect(container.read(auctionControllerProvider).recommendation, isNotNull);
 
     controller.setCurrentBid(12);
@@ -81,11 +76,7 @@ void main() {
       ),
       players: [player('p1')],
       teams: const [
-        FantasyTeamEntity(
-          id: 'me',
-          name: 'Matrix FC',
-          creditsRemaining: 10,
-        ),
+        FantasyTeamEntity(id: 'me', name: 'Matrix FC', creditsRemaining: 10),
       ],
     );
 
@@ -132,10 +123,10 @@ void main() {
     );
 
     var state = container.read(auctionControllerProvider);
-    expect(
-      state.snapshot!.teamsById.values.map((team) => team.name),
-      ['Mantra Matrix', 'Gli Svincolati'],
-    );
+    expect(state.snapshot!.teamsById.values.map((team) => team.name), [
+      'Mantra Matrix',
+      'Gli Svincolati',
+    ]);
 
     controller.nominatePlayer('p1');
     controller.skipActivePlayer();
@@ -165,11 +156,7 @@ void main() {
       ),
       players: [player('p1')],
       teams: const [
-        FantasyTeamEntity(
-          id: 'me',
-          name: 'Matrix FC',
-          creditsRemaining: 500,
-        ),
+        FantasyTeamEntity(id: 'me', name: 'Matrix FC', creditsRemaining: 500),
       ],
     );
 
@@ -189,7 +176,6 @@ void main() {
     expect(state.isStarted, isTrue);
     expect(state.session!.name, 'Asta da riprendere');
   });
-
 }
 
 PlayerEntity player(String id) {

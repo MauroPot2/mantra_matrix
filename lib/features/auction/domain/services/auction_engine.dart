@@ -44,10 +44,9 @@ class AuctionEngine {
     final department = PlayerDepartmentX.forPlayer(player);
     final departmentBudget = config.departmentBudgetFor(department);
     final departmentSpent = _departmentSpent(myTeam, department);
-    final departmentBudgetCeiling = math.max(
-      config.minimumBid,
-      departmentBudget - departmentSpent,
-    ).toInt();
+    final departmentBudgetCeiling = math
+        .max(config.minimumBid, departmentBudget - departmentSpent)
+        .toInt();
 
     if (player.status != DraftStatus.available) {
       return AuctionRecommendation(
@@ -159,12 +158,15 @@ class AuctionEngine {
         explanation: player.isPenaltyTaker
             ? 'Rigorista indicato nel dataset.'
             : player.isFreeKickTaker
-                ? 'Specialista sui calci piazzati.'
-                : 'Nessun bonus specialista rilevato.',
+            ? 'Specialista sui calci piazzati.'
+            : 'Nessun bonus specialista rilevato.',
       ),
     );
 
-    final reliability = _reliabilityMultiplier(player, evidence.overallReliability);
+    final reliability = _reliabilityMultiplier(
+      player,
+      evidence.overallReliability,
+    );
     factors.add(
       RecommendationFactor(
         key: 'reliability',
@@ -190,16 +192,14 @@ class AuctionEngine {
     final phasedAdjustment = rawStrategicAdjustment > 0
         ? rawStrategicAdjustment * positiveSignalWeight
         : rawStrategicAdjustment;
-    final strategicAdjustment = phasedAdjustment.clamp(
-      -config.maxStrategicDiscount,
-      config.maxStrategicPremium,
-    ).toDouble();
+    final strategicAdjustment = phasedAdjustment
+        .clamp(-config.maxStrategicDiscount, config.maxStrategicPremium)
+        .toDouble();
 
     final calibratedValue = scaledCatalogValue * (1 + strategicAdjustment);
-    final fairValue = math.max(
-      config.minimumBid,
-      (calibratedValue * reliability).round(),
-    ).toInt();
+    final fairValue = math
+        .max(config.minimumBid, (calibratedValue * reliability).round())
+        .toInt();
     var maxBid = fairValue;
     maxBid = math.min(maxBid, hardCeiling).toInt();
     maxBid = math.min(maxBid, departmentBudgetCeiling).toInt();
@@ -211,7 +211,9 @@ class AuctionEngine {
     if (formationImpact.primaryUnlocked) {
       reasons.add('Rende schierabile il ${config.primaryFormationName}.');
     } else if (formationImpact.primaryMissingReduction > 0) {
-      reasons.add('Avvicina il modulo principale ${config.primaryFormationName}.');
+      reasons.add(
+        'Avvicina il modulo principale ${config.primaryFormationName}.',
+      );
     }
     if (formationImpact.secondaryUnlockedCount > 0) {
       reasons.add(
@@ -224,11 +226,16 @@ class AuctionEngine {
       );
     }
     final scarceTopRoles = roleMarkets
-        .where((market) => market.candidateIsTop && market.remainingTopAlternatives <= 2)
+        .where(
+          (market) =>
+              market.candidateIsTop && market.remainingTopAlternatives <= 2,
+        )
         .map((market) => market.role.name.toUpperCase())
         .toList(growable: false);
     if (scarceTopRoles.isNotEmpty) {
-      reasons.add('Pochi top alternativi rimasti in ${scarceTopRoles.join('/')}.' );
+      reasons.add(
+        'Pochi top alternativi rimasti in ${scarceTopRoles.join('/')}.',
+      );
     }
     if (player.isPenaltyTaker) reasons.add('È indicato come rigorista.');
 
@@ -236,7 +243,9 @@ class AuctionEngine {
     if (player.isInjured) warnings.add('Il giocatore risulta infortunato.');
     if (player.isSuspended) warnings.add('Il giocatore risulta squalificato.');
     if (fairValue > hardCeiling) {
-      warnings.add('Il valore supera il tetto necessario per completare la rosa.');
+      warnings.add(
+        'Il valore supera il tetto necessario per completare la rosa.',
+      );
     }
     if (fairValue > departmentBudgetCeiling) {
       warnings.add(
@@ -278,7 +287,9 @@ class AuctionEngine {
       strategicAdjustment: strategicAdjustment,
       confidence: evidence.overallReliability,
       reasons: reasons.isEmpty
-          ? const ['Valutazione coerente con FVM, dati e composizione della rosa.']
+          ? const [
+              'Valutazione coerente con FVM, dati e composizione della rosa.',
+            ]
           : List.unmodifiable(reasons),
       warnings: List.unmodifiable(warnings.toSet()),
       factors: List.unmodifiable(factors),
@@ -318,7 +329,8 @@ class AuctionEngine {
       var candidateValue = 1.0;
       if (market.candidateIsTop && market.remainingTopAlternatives <= 1) {
         candidateValue = 1.08;
-      } else if (market.candidateIsTop && market.remainingTopAlternatives <= 3) {
+      } else if (market.candidateIsTop &&
+          market.remainingTopAlternatives <= 3) {
         candidateValue = 1.05;
       } else if (market.remainingAlternatives <= 5) {
         candidateValue = 1.04;

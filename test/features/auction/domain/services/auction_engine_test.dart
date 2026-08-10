@@ -12,11 +12,7 @@ void main() {
     initialCredits: 100,
     rosterSize: 5,
     minimumBid: 1,
-    targetCoverage: const {
-      MantraRole.dc: 2,
-      MantraRole.c: 1,
-      MantraRole.pc: 1,
-    },
+    targetCoverage: const {MantraRole.dc: 2, MantraRole.c: 1, MantraRole.pc: 1},
   );
 
   test('non supera mai il tetto necessario a completare la rosa', () {
@@ -100,11 +96,7 @@ void main() {
       creditsRemaining: 10,
     );
 
-    final target = player(
-      id: 'target',
-      role: MantraRole.dc,
-      basePrice: 4,
-    );
+    final target = player(id: 'target', role: MantraRole.dc, basePrice: 4);
 
     final result = engine.evaluate(
       player: target,

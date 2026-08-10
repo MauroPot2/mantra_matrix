@@ -48,12 +48,14 @@ class AuctionEvent {
     required DateTime occurredAt,
     required String playerId,
     required int bid,
+    String? teamId,
   }) {
     return AuctionEvent._(
       id: id,
       type: AuctionEventType.bidChanged,
       occurredAt: occurredAt,
       playerId: playerId,
+      teamId: teamId,
       amount: bid,
     );
   }

@@ -33,7 +33,9 @@ class PlayerModel extends PlayerEntity {
     Map<String, dynamic> json, {
     String? documentId,
   }) {
-    final id = _readString(json, const ['id']) ?? documentId;
+    final id =
+        _readString(json, const ['id', 'understat_id', 'player_id']) ??
+        documentId;
     if (id == null || id.trim().isEmpty) {
       throw const FormatException('PlayerModel: id mancante');
     }
@@ -42,44 +44,91 @@ class PlayerModel extends PlayerEntity {
       id: id,
       name: _requiredString(json, const ['name']),
       team: _requiredString(json, const ['team']),
-      roles: _parseRoles(json['roles'] ?? json['role']),
-      basePrice: _readInt(
-        json,
-        const ['fvm', 'base_price', 'basePrice'],
-        fallback: 1,
-      ),
+      roles: _parseRoles(json['roles'] ?? json['role'] ?? json['position']),
+      basePrice: _readInt(json, const [
+        'fvm',
+        'base_price',
+        'basePrice',
+      ], fallback: 1),
       expectedGoals: _readDouble(json, const ['xG', 'expected_goals']),
       expectedAssists: _readDouble(json, const ['xA', 'expected_assists']),
       expectedGoals90: _readDouble(json, const ['xG90', 'expected_goals_90']),
-      expectedAssists90:
-          _readDouble(json, const ['xA90', 'expected_assists_90']),
-      expectedYellowCards:
-          _readDouble(json, const ['xYC', 'expected_yellow_cards']),
-      historicalMinutes:
-          _readInt(json, const ['minutes', 'historical_minutes']),
-      expectedGoalsConceded:
-          _readDouble(json, const ['xGC', 'expected_goals_conceded']),
-      expectedCleanSheets:
-          _readDouble(json, const ['xCS', 'expected_clean_sheets']),
-      isPenaltyTaker:
-          _readBool(json, const ['is_penalty_taker', 'isPenaltyTaker']),
-      isFreeKickTaker:
-          _readBool(json, const ['is_free_kick_taker', 'isFreeKickTaker']),
+      expectedAssists90: _readDouble(json, const [
+        'xA90',
+        'expected_assists_90',
+      ]),
+      expectedYellowCards: _readDouble(json, const [
+        'xYC',
+        'expected_yellow_cards',
+      ]),
+      historicalMinutes: _readInt(json, const [
+        'minutes',
+        'historical_minutes',
+      ]),
+      expectedGoalsConceded: _readDouble(json, const [
+        'xGC',
+        'expected_goals_conceded',
+      ]),
+      expectedCleanSheets: _readDouble(json, const [
+        'xCS',
+        'expected_clean_sheets',
+      ]),
+      isPenaltyTaker: _readBool(json, const [
+        'is_penalty_taker',
+        'isPenaltyTaker',
+      ]),
+      isFreeKickTaker: _readBool(json, const [
+        'is_free_kick_taker',
+        'isFreeKickTaker',
+      ]),
       isInjured: _readBool(json, const ['is_injured', 'isInjured']),
       isSuspended: _readBool(json, const ['is_suspended', 'isSuspended']),
-      expectedPoints:
-          _readDouble(json, const ['expected_points', 'expectedPoints']),
-      polyvalenceMultiplier: _readDouble(
-        json,
-        const ['polyvalence_multiplier', 'polyvalenceMultiplier'],
-        fallback: 1.0,
-      ),
+      expectedPoints: _readDouble(json, const [
+        'expected_points',
+        'expectedPoints',
+      ]),
+      polyvalenceMultiplier: _readDouble(json, const [
+        'polyvalence_multiplier',
+        'polyvalenceMultiplier',
+      ], fallback: 1.0),
       vorp: _readDouble(json, const ['vorp']),
       status: _parseStatus(json['status']),
-      draftedByTeamId:
-          _readString(json, const ['drafted_by_team_id', 'draftedByTeamId']),
-      purchasePrice:
-          _readNullableInt(json, const ['purchase_price', 'purchasePrice']),
+      draftedByTeamId: _readString(json, const [
+        'drafted_by_team_id',
+        'draftedByTeamId',
+      ]),
+      purchasePrice: _readNullableInt(json, const [
+        'purchase_price',
+        'purchasePrice',
+      ]),
+    );
+  }
+
+  factory PlayerModel.fromEntity(PlayerEntity player) {
+    return PlayerModel(
+      id: player.id,
+      name: player.name,
+      team: player.team,
+      roles: player.roles,
+      basePrice: player.basePrice,
+      expectedGoals: player.expectedGoals,
+      expectedAssists: player.expectedAssists,
+      expectedGoals90: player.expectedGoals90,
+      expectedAssists90: player.expectedAssists90,
+      expectedYellowCards: player.expectedYellowCards,
+      historicalMinutes: player.historicalMinutes,
+      expectedGoalsConceded: player.expectedGoalsConceded,
+      expectedCleanSheets: player.expectedCleanSheets,
+      isPenaltyTaker: player.isPenaltyTaker,
+      isFreeKickTaker: player.isFreeKickTaker,
+      isInjured: player.isInjured,
+      isSuspended: player.isSuspended,
+      expectedPoints: player.expectedPoints,
+      polyvalenceMultiplier: player.polyvalenceMultiplier,
+      vorp: player.vorp,
+      status: player.status,
+      draftedByTeamId: player.draftedByTeamId,
+      purchasePrice: player.purchasePrice,
     );
   }
 
@@ -148,10 +197,7 @@ class PlayerModel extends PlayerEntity {
     );
   }
 
-  static String _requiredString(
-    Map<String, dynamic> json,
-    List<String> keys,
-  ) {
+  static String _requiredString(Map<String, dynamic> json, List<String> keys) {
     final value = _readString(json, keys);
     if (value == null || value.trim().isEmpty) {
       throw FormatException('PlayerModel: campo obbligatorio mancante: $keys');
@@ -159,10 +205,7 @@ class PlayerModel extends PlayerEntity {
     return value;
   }
 
-  static String? _readString(
-    Map<String, dynamic> json,
-    List<String> keys,
-  ) {
+  static String? _readString(Map<String, dynamic> json, List<String> keys) {
     for (final key in keys) {
       final value = json[key];
       if (value != null) return value.toString();
@@ -194,10 +237,7 @@ class PlayerModel extends PlayerEntity {
     return _readNullableInt(json, keys) ?? fallback;
   }
 
-  static int? _readNullableInt(
-    Map<String, dynamic> json,
-    List<String> keys,
-  ) {
+  static int? _readNullableInt(Map<String, dynamic> json, List<String> keys) {
     for (final key in keys) {
       final value = json[key];
       if (value is int) return value;

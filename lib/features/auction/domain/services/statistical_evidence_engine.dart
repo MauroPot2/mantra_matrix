@@ -9,9 +9,9 @@ class StatisticalEvidenceEngine {
     required List<PlayerEntity> catalogPlayers,
   }) {
     final comparisonRole = player.roles.first;
-    final group = _uniquePlayers(catalogPlayers)
-        .where((candidate) => candidate.roles.contains(comparisonRole))
-        .toList();
+    final group = _uniquePlayers(
+      catalogPlayers,
+    ).where((candidate) => candidate.roles.contains(comparisonRole)).toList();
 
     if (group.every((candidate) => candidate.id != player.id)) {
       group.add(player);
@@ -19,8 +19,7 @@ class StatisticalEvidenceEngine {
 
     final source = _selectMetricSource(player, group);
     final rawScores = <String, double>{
-      for (final candidate in group)
-        candidate.id: _rawScore(candidate, source),
+      for (final candidate in group) candidate.id: _rawScore(candidate, source),
     };
     final roleMean = rawScores.isEmpty
         ? 0.0
@@ -50,11 +49,12 @@ class StatisticalEvidenceEngine {
         .toDouble();
     final completeness = _dataCompleteness(player, source);
     final peerReliability = (peerCount / 20).clamp(0.0, 1.0).toDouble();
-    var overallReliability = (
-      (sampleReliability * 0.45) +
-      (completeness * 0.30) +
-      (peerReliability * 0.25)
-    ).clamp(0.0, 1.0).toDouble();
+    var overallReliability =
+        ((sampleReliability * 0.45) +
+                (completeness * 0.30) +
+                (peerReliability * 0.25))
+            .clamp(0.0, 1.0)
+            .toDouble();
     if (peerCount < 3) {
       overallReliability = overallReliability.clamp(0.0, 0.45).toDouble();
     } else if (peerCount < 8) {
@@ -89,7 +89,9 @@ class StatisticalEvidenceEngine {
         'Campione ridotto: le metriche per 90 sono state avvicinate alla media del ruolo.',
       );
     } else if (player.historicalMinutes < 1500) {
-      caveats.add('Campione intermedio: interpretare il percentile con prudenza.');
+      caveats.add(
+        'Campione intermedio: interpretare il percentile con prudenza.',
+      );
     }
     if (peerCount < 8) {
       caveats.add('Gruppo di confronto piccolo: percentile poco stabile.');
@@ -128,21 +130,21 @@ class StatisticalEvidenceEngine {
   ) {
     if (group.isEmpty) return StatisticalMetricSource.insufficientData;
 
-    final vorpCoverage = group.where((candidate) => candidate.vorp != 0).length /
-        group.length;
+    final vorpCoverage =
+        group.where((candidate) => candidate.vorp != 0).length / group.length;
     if (player.vorp != 0 && vorpCoverage >= 0.70) {
       return StatisticalMetricSource.vorp;
     }
 
-    final expectedPointsCoverage = group
-            .where((candidate) => candidate.expectedPoints != 0)
-            .length /
+    final expectedPointsCoverage =
+        group.where((candidate) => candidate.expectedPoints != 0).length /
         group.length;
     if (player.expectedPoints != 0 && expectedPointsCoverage >= 0.70) {
       return StatisticalMetricSource.expectedPoints;
     }
 
-    final hasPer90 = player.expectedGoals90 != 0 ||
+    final hasPer90 =
+        player.expectedGoals90 != 0 ||
         player.expectedAssists90 != 0 ||
         player.expectedCleanSheets != 0 ||
         player.expectedGoalsConceded != 0;
@@ -151,10 +153,7 @@ class StatisticalEvidenceEngine {
     return StatisticalMetricSource.insufficientData;
   }
 
-  double _rawScore(
-    PlayerEntity player,
-    StatisticalMetricSource source,
-  ) {
+  double _rawScore(PlayerEntity player, StatisticalMetricSource source) {
     return switch (source) {
       StatisticalMetricSource.vorp => player.vorp,
       StatisticalMetricSource.expectedPoints => player.expectedPoints,
@@ -168,8 +167,7 @@ class StatisticalEvidenceEngine {
       return (player.expectedCleanSheets * 2) -
           (player.expectedGoalsConceded * 0.35);
     }
-    return (player.expectedGoals90 * 3) +
-        (player.expectedAssists90 * 1.75);
+    return (player.expectedGoals90 * 3) + (player.expectedAssists90 * 1.75);
   }
 
   double _adjustScore({

@@ -47,9 +47,18 @@ void main() {
     expect(team.roster.single.id, 'p1');
     expect(state.activePlayerId, isNull);
     expect(state.assignmentsByPlayerId['p1']!.price, 12);
-    expect(state.availablePlayers.map((player) => player.id), isNot(contains('p1')));
-    expect(state.uncalledPlayers.map((player) => player.id), isNot(contains('p1')));
-    expect(state.unsoldPlayers.map((player) => player.id), isNot(contains('p1')));
+    expect(
+      state.availablePlayers.map((player) => player.id),
+      isNot(contains('p1')),
+    );
+    expect(
+      state.uncalledPlayers.map((player) => player.id),
+      isNot(contains('p1')),
+    );
+    expect(
+      state.unsoldPlayers.map((player) => player.id),
+      isNot(contains('p1')),
+    );
     expect(state.draftedPlayers.map((player) => player.id), contains('p1'));
   });
 
@@ -61,11 +70,7 @@ void main() {
       createdAt: date(0),
       initialPlayers: [buildPlayer('p1')],
       initialTeams: const [
-        FantasyTeamEntity(
-          id: 't1',
-          name: 'Matrix FC',
-          creditsRemaining: 10,
-        ),
+        FantasyTeamEntity(id: 't1', name: 'Matrix FC', creditsRemaining: 10),
       ],
     );
 
@@ -109,11 +114,7 @@ void main() {
       eventId: 'e3',
       occurredAt: date(3),
     );
-    session = service.undoLast(
-      session,
-      eventId: 'e4',
-      occurredAt: date(4),
-    );
+    session = service.undoLast(session, eventId: 'e4', occurredAt: date(4));
 
     final state = service.snapshot(session);
     final player = state.playersById['p1']!;
@@ -150,50 +151,41 @@ void main() {
       occurredAt: date(3),
     );
 
-    session = service.undoLast(
-      session,
-      eventId: 'e4',
-      occurredAt: date(4),
-    );
+    session = service.undoLast(session, eventId: 'e4', occurredAt: date(4));
     expect(service.snapshot(session).currentBid, 5);
 
-    session = service.undoLast(
-      session,
-      eventId: 'e5',
-      occurredAt: date(5),
-    );
+    session = service.undoLast(session, eventId: 'e5', occurredAt: date(5));
     expect(service.snapshot(session).currentBid, 1);
   });
 
-  test('saltare mantiene il giocatore disponibile e undo riapre la chiamata', () {
-    var session = buildSession();
-    session = service.nominatePlayer(
-      session,
-      playerId: 'p1',
-      eventId: 'e1',
-      occurredAt: date(1),
-    );
-    session = service.skipActivePlayer(
-      session,
-      eventId: 'e2',
-      occurredAt: date(2),
-    );
+  test(
+    'saltare mantiene il giocatore disponibile e undo riapre la chiamata',
+    () {
+      var session = buildSession();
+      session = service.nominatePlayer(
+        session,
+        playerId: 'p1',
+        eventId: 'e1',
+        occurredAt: date(1),
+      );
+      session = service.skipActivePlayer(
+        session,
+        eventId: 'e2',
+        occurredAt: date(2),
+      );
 
-    final skippedState = service.snapshot(session);
-    expect(skippedState.activePlayerId, isNull);
-    expect(skippedState.playersById['p1']!.status, DraftStatus.available);
-    expect(skippedState.unsoldPlayers.map((player) => player.id), ['p1']);
-    expect(skippedState.uncalledPlayers.map((player) => player.id), ['p2']);
+      final skippedState = service.snapshot(session);
+      expect(skippedState.activePlayerId, isNull);
+      expect(skippedState.playersById['p1']!.status, DraftStatus.available);
+      expect(skippedState.unsoldPlayers.map((player) => player.id), ['p1']);
+      expect(skippedState.uncalledPlayers.map((player) => player.id), ['p2']);
 
-    session = service.undoLast(
-      session,
-      eventId: 'e3',
-      occurredAt: date(3),
-    );
-    final restoredState = service.snapshot(session);
-    expect(restoredState.activePlayerId, 'p1');
-    expect(restoredState.unsoldPlayers, isEmpty);
-  });
+      session = service.undoLast(session, eventId: 'e3', occurredAt: date(3));
+      final restoredState = service.snapshot(session);
+      expect(restoredState.activePlayerId, 'p1');
+      expect(restoredState.unsoldPlayers, isEmpty);
+    },
+  );
 
   test('uno svincolato può essere richiamato e poi assegnato', () {
     var session = buildSession();
@@ -229,7 +221,10 @@ void main() {
 
     final state = service.snapshot(session);
     expect(state.unsoldPlayers, isEmpty);
-    expect(state.availablePlayers.map((player) => player.id), isNot(contains('p1')));
+    expect(
+      state.availablePlayers.map((player) => player.id),
+      isNot(contains('p1')),
+    );
     expect(state.teamsById['t2']!.roster.single.id, 'p1');
   });
 
@@ -251,6 +246,127 @@ void main() {
     expect(restored.amount, 17);
     expect(restored.occurredAt, original.occurredAt);
   });
+
+  test('timer condiviso assegna il giocatore alla squadra leader', () {
+    var session = buildSession().copyWith(
+      config: config.copyWith(bidDurationSeconds: 30),
+    );
+    session = service.nominatePlayer(
+      session,
+      playerId: 'p1',
+      eventId: 'timer-call',
+      occurredAt: date(1),
+    );
+    session = service.placeBid(
+      session,
+      teamId: 't2',
+      bid: 7,
+      eventId: 'timer-bid',
+      occurredAt: date(1).add(const Duration(seconds: 5)),
+    );
+
+    final liveState = service.snapshot(session);
+    expect(liveState.activeBid!.leadingTeamId, 't2');
+    expect(
+      liveState.activeBid!.endsAt,
+      date(1).add(const Duration(seconds: 35)),
+    );
+
+    expect(
+      () => service.settleExpiredLot(
+        session,
+        occurredAt: date(1).add(const Duration(seconds: 31)),
+      ),
+      throwsA(isA<AuctionSessionException>()),
+    );
+
+    session = service.settleExpiredLot(
+      session,
+      occurredAt: date(1).add(const Duration(seconds: 36)),
+    );
+    final settled = service.snapshot(session);
+    expect(settled.playersById['p1']!.draftedByTeamId, 't2');
+    expect(settled.playersById['p1']!.purchasePrice, 7);
+  });
+
+  test('ogni rilancio estende di cinque secondi la scadenza condivisa', () {
+    var session = buildSession().copyWith(
+      config: config.copyWith(bidDurationSeconds: 30, bidExtensionSeconds: 5),
+    );
+    session = service.nominatePlayer(
+      session,
+      playerId: 'p1',
+      eventId: 'extension-call',
+      occurredAt: date(1),
+    );
+    session = service.placeBid(
+      session,
+      teamId: 't2',
+      bid: 7,
+      eventId: 'extension-bid-1',
+      occurredAt: date(1).add(const Duration(seconds: 29)),
+    );
+
+    expect(
+      service.snapshot(session).activeBid!.endsAt,
+      date(1).add(const Duration(seconds: 35)),
+    );
+
+    // Il secondo rilancio arriva dopo la scadenza originaria, ma dentro la
+    // proroga ottenuta dalla prima offerta.
+    session = service.placeBid(
+      session,
+      teamId: 't1',
+      bid: 8,
+      eventId: 'extension-bid-2',
+      occurredAt: date(1).add(const Duration(seconds: 32)),
+    );
+
+    expect(service.snapshot(session).currentBid, 8);
+    expect(
+      service.snapshot(session).activeBid!.endsAt,
+      date(1).add(const Duration(seconds: 40)),
+    );
+  });
+
+  test('timer senza offerte sposta il giocatore tra gli svincolati', () {
+    var session = buildSession().copyWith(
+      config: config.copyWith(bidDurationSeconds: 15),
+    );
+    session = service.nominatePlayer(
+      session,
+      playerId: 'p1',
+      eventId: 'empty-call',
+      occurredAt: date(1),
+    );
+    session = service.settleExpiredLot(
+      session,
+      occurredAt: date(1).add(const Duration(seconds: 16)),
+    );
+
+    expect(service.snapshot(session).unsoldPlayerIds, ['p1']);
+  });
+
+  test('una sessione legacy senza timer accetta offerte tardive', () {
+    var session = buildSession().copyWith(
+      config: config.copyWith(bidDurationSeconds: 0),
+    );
+    session = service.nominatePlayer(
+      session,
+      playerId: 'p1',
+      eventId: 'legacy-call',
+      occurredAt: date(1),
+    );
+    session = service.placeBid(
+      session,
+      teamId: 't1',
+      bid: 4,
+      eventId: 'legacy-bid',
+      occurredAt: date(1).add(const Duration(days: 1)),
+    );
+
+    expect(service.snapshot(session).currentBid, 4);
+  });
 }
 
 AuctionSession buildSession() {
@@ -265,16 +381,8 @@ AuctionSession buildSession() {
     createdAt: date(0),
     initialPlayers: [buildPlayer('p1'), buildPlayer('p2')],
     initialTeams: const [
-      FantasyTeamEntity(
-        id: 't1',
-        name: 'Matrix FC',
-        creditsRemaining: 100,
-      ),
-      FantasyTeamEntity(
-        id: 't2',
-        name: 'Rival FC',
-        creditsRemaining: 100,
-      ),
+      FantasyTeamEntity(id: 't1', name: 'Matrix FC', creditsRemaining: 100),
+      FantasyTeamEntity(id: 't2', name: 'Rival FC', creditsRemaining: 100),
     ],
   );
 }
