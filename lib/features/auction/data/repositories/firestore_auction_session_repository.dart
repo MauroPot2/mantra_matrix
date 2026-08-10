@@ -9,9 +9,13 @@ import 'package:mantra_matrix/features/player_database/data/models/player_model.
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
 
 class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
-  static const _schemaVersion = 6;
+  static const _schemaVersion = 7;
   static const _sessionsCollection = 'auction_sessions';
   static const _eventsCollection = 'events';
+  static const _playersCollection = 'players';
+  static const _snapshotReady = 'ready';
+  static const _snapshotWriting = 'writing';
+  static const _batchSize = 400;
 
   final FirebaseFirestore _firestore;
   final String _ownerUid;
@@ -29,6 +33,11 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     required AuctionSession session,
     required String myTeamId,
   }) async {
+    final sessionRef = _sessions.doc(session.id);
+    final playerIds = session.initialPlayers
+        .map((player) => player.id)
+        .toList(growable: false);
+
     final data = <String, dynamic>{
       'schema_version': _schemaVersion,
       'owner_uid': _ownerUid,
@@ -39,27 +48,48 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       'created_at': Timestamp.fromDate(session.createdAt.toUtc()),
       'updated_at': FieldValue.serverTimestamp(),
       'config': session.config.toJson(),
-
-      // Schema v6: ogni nuova asta conserva il proprio snapshot giocatori.
-      // In questo modo il ripristino non dipende più dalla collezione globale
-      // `/players` e il dataset della sessione resta stabile nel tempo.
-      'initial_players': session.initialPlayers
-          .map((player) => PlayerModel.fromEntity(player).toJson())
-          .toList(growable: false),
-
-      // Manteniamo gli ID durante la transizione per poter leggere sessioni
-      // create con schema <= 5 e per facilitare eventuali migrazioni future.
-      'initial_player_ids': session.initialPlayers
-          .map((player) => player.id)
-          .toList(growable: false),
+      'initial_player_ids': playerIds,
+      'player_count': playerIds.length,
+      'player_snapshot_status': _snapshotWriting,
       'initial_teams': session.initialTeams
           .map(_teamToJson)
           .toList(growable: false),
     };
 
-    // Merge rende l'operazione idempotente e impedisce che una creazione
-    // arrivata in ritardo cancelli metadati aggiornati dagli eventi.
-    await _sessions.doc(session.id).set(data, SetOptions(merge: true));
+    // Il documento sessione resta piccolo. I giocatori vengono persistiti in
+    // una subcollection dedicata, evitando il limite Firestore di 1 MiB per
+    // documento e rendendo il dataset scalabile e indipendente dal catalogo.
+    await sessionRef.set(data, SetOptions(merge: true));
+    await _savePlayerSnapshot(sessionRef, session.initialPlayers);
+    await sessionRef.set(
+      {
+        'player_snapshot_status': _snapshotReady,
+        'updated_at': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> _savePlayerSnapshot(
+    DocumentReference<Map<String, dynamic>> sessionRef,
+    List<PlayerEntity> players,
+  ) async {
+    for (var start = 0; start < players.length; start += _batchSize) {
+      final end = (start + _batchSize < players.length)
+          ? start + _batchSize
+          : players.length;
+      final batch = _firestore.batch();
+
+      for (final player in players.sublist(start, end)) {
+        final playerRef = sessionRef.collection(_playersCollection).doc(player.id);
+        batch.set(playerRef, {
+          ...PlayerModel.fromEntity(player).toJson(),
+          'schema_version': _schemaVersion,
+        });
+      }
+
+      await batch.commit();
+    }
   }
 
   @override
@@ -85,8 +115,6 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       SetOptions(merge: true),
     );
 
-    // Le batched writes sono atomiche e vengono accodate dalla cache Firestore
-    // anche quando il dispositivo è temporaneamente offline.
     await batch.commit();
   }
 
@@ -120,10 +148,6 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   Future<RestoredAuctionSession?> loadLatestActiveSession({
     required List<PlayerEntity> players,
   }) async {
-    // Evitiamo un orderBy combinato per non richiedere subito un indice
-    // composito. Il numero di sessioni live per utente dovrebbe essere minimo.
-    // Filtriamo per proprietario. Lo stato viene controllato localmente per
-    // evitare di richiedere subito un indice composito Firestore.
     final query = await _sessions
         .where('owner_uid', isEqualTo: _ownerUid)
         .limit(50)
@@ -216,16 +240,12 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       );
     }
 
-    // Le sessioni v6+ sono autosufficienti: il catalogo globale non serve più.
-    // Per gli schemi precedenti manteniamo temporaneamente il vecchio percorso
-    // basato su `initial_player_ids`, così nessuna asta già creata viene persa.
-    final embeddedPlayers = _readEmbeddedPlayers(data['initial_players']);
-    final initialPlayers = embeddedPlayers ??
-        _restoreLegacyPlayers(
-          data['initial_player_ids'],
-          legacyPlayers: legacyPlayers,
-        );
-
+    final initialPlayers = await _restorePlayers(
+      document,
+      data: data,
+      schemaVersion: schemaVersion,
+      legacyPlayers: legacyPlayers,
+    );
     final initialTeams = _readTeams(data['initial_teams']);
     final myTeamId = data['my_team_id']?.toString();
 
@@ -262,6 +282,72 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     );
 
     return RestoredAuctionSession(session: session, myTeamId: myTeamId);
+  }
+
+  Future<List<PlayerEntity>> _restorePlayers(
+    DocumentSnapshot<Map<String, dynamic>> document, {
+    required Map<String, dynamic> data,
+    required int schemaVersion,
+    required List<PlayerEntity> legacyPlayers,
+  }) async {
+    if (schemaVersion >= 7) {
+      if (data['player_snapshot_status'] != _snapshotReady) {
+        throw const AuctionSessionPersistenceException(
+          'Il salvataggio del dataset dell’asta non è stato completato. '
+          'Riprova tra pochi secondi.',
+        );
+      }
+      return _readPlayerSubcollection(
+        document,
+        expectedIds: _readStringList(data['initial_player_ids']),
+      );
+    }
+
+    // Compatibilità con la breve versione intermedia v6 che salvava lo
+    // snapshot nel documento sessione.
+    final embeddedPlayers = _readEmbeddedPlayers(data['initial_players']);
+    if (embeddedPlayers != null) return embeddedPlayers;
+
+    // Schema <= 5: ultimo ponte di compatibilità con il vecchio catalogo.
+    return _restoreLegacyPlayers(
+      data['initial_player_ids'],
+      legacyPlayers: legacyPlayers,
+    );
+  }
+
+  Future<List<PlayerEntity>> _readPlayerSubcollection(
+    DocumentSnapshot<Map<String, dynamic>> document, {
+    required List<String> expectedIds,
+  }) async {
+    final snapshot = await document.reference.collection(_playersCollection).get();
+    final playersById = <String, PlayerEntity>{};
+
+    try {
+      for (final playerDocument in snapshot.docs) {
+        playersById[playerDocument.id] = PlayerModel.fromJson(
+          playerDocument.data(),
+          documentId: playerDocument.id,
+        );
+      }
+    } on FormatException catch (error) {
+      throw AuctionSessionPersistenceException(
+        'Snapshot giocatori non valido: ${error.message}',
+      );
+    }
+
+    final missingIds = expectedIds
+        .where((id) => !playersById.containsKey(id))
+        .toList(growable: false);
+    if (missingIds.isNotEmpty) {
+      final preview = missingIds.take(5).join(', ');
+      throw AuctionSessionPersistenceException(
+        'Dataset incompleto: mancano ${missingIds.length} giocatori ($preview).',
+      );
+    }
+
+    return expectedIds
+        .map((id) => playersById[id]!)
+        .toList(growable: false);
   }
 
   static List<PlayerEntity>? _readEmbeddedPlayers(Object? rawPlayers) {
