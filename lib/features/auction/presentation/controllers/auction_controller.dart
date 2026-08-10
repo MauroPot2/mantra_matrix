@@ -204,10 +204,10 @@ class AuctionController extends Notifier<AuctionUiState> {
       persistenceError: null,
     );
 
-    _schedulePersistence(
+    final initialSave = _schedulePersistence(
       () => _repository.saveSession(session: session, myTeamId: myTeamId),
     );
-    _subscribeToEvents(session.id);
+    unawaited(_subscribeAfterInitialSave(session.id, initialSave));
   }
 
   void prepareNewSession() {
@@ -521,6 +521,18 @@ class AuctionController extends Notifier<AuctionUiState> {
     }
   }
 
+  Future<void> _subscribeAfterInitialSave(
+    String sessionId,
+    Future<void> initialSave,
+  ) async {
+    await initialSave;
+    if (state.session?.id != sessionId ||
+        state.persistenceStatus == AuctionPersistenceStatus.failed) {
+      return;
+    }
+    _subscribeToEvents(sessionId);
+  }
+
   void _subscribeToEvents(String sessionId) {
     if (_subscribedSessionId == sessionId && _eventsSubscription != null) {
       return;
@@ -593,14 +605,14 @@ class AuctionController extends Notifier<AuctionUiState> {
 
   /// Le scritture vengono serializzate: la sessione viene creata prima del
   /// primo evento e due azioni consecutive non possono sorpassarsi in rete.
-  void _schedulePersistence(Future<void> Function() operation) {
+  Future<void> _schedulePersistence(Future<void> Function() operation) {
     state = state.copyWith(
       persistenceStatus: AuctionPersistenceStatus.pending,
       persistenceError: null,
     );
 
     final queued = _persistenceTail.then((_) => operation());
-    _persistenceTail = queued.catchError((Object _, StackTrace __) {});
+    _persistenceTail = queued.catchError((Object _, StackTrace _) {});
 
     late final Future<void> tracked;
     tracked = queued
@@ -632,6 +644,7 @@ class AuctionController extends Notifier<AuctionUiState> {
 
     _pendingPersistence.add(tracked);
     unawaited(tracked);
+    return tracked;
   }
 
   Future<void> waitForPendingPersistence() async {
