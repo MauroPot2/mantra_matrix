@@ -10,6 +10,7 @@ class AuctionLiveState {
   final int extensionSeconds;
   final int revision;
   final DateTime? updatedAt;
+  final String? controllerInstanceId;
 
   const AuctionLiveState({
     required this.phase,
@@ -19,6 +20,7 @@ class AuctionLiveState {
     required this.extensionSeconds,
     required this.revision,
     required this.updatedAt,
+    required this.controllerInstanceId,
   });
 
   const AuctionLiveState.idle()
@@ -28,12 +30,16 @@ class AuctionLiveState {
         startedAt = null,
         extensionSeconds = 0,
         revision = 0,
-        updatedAt = null;
+        updatedAt = null,
+        controllerInstanceId = null;
 
   bool get isRunning =>
       phase == AuctionClockPhase.running &&
       activePlayerId != null &&
       startedAt != null;
+
+  bool isControlledBy(String instanceId) =>
+      controllerInstanceId != null && controllerInstanceId == instanceId;
 
   DateTime? deadline(AuctionConfig config) {
     final start = startedAt;
