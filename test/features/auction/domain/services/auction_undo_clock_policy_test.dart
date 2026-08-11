@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mantra_matrix/features/auction/domain/entities/auction_event.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_live_state.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session.dart';
 import 'package:mantra_matrix/features/auction/domain/services/auction_session_service.dart';
