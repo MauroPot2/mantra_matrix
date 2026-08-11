@@ -6,11 +6,16 @@ import {
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
+  collection,
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  orderBy,
+  query,
   setDoc,
   updateDoc,
+  where,
 } from 'firebase/firestore';
 
 const projectId = 'demo-asta-matrix-rules';
@@ -41,6 +46,20 @@ beforeEach(async () => {
       status: 'live',
     });
 
+    await setDoc(doc(db, 'auction_sessions', 'session-2'), {
+      owner_uid: 'alice',
+      member_uids: ['alice'],
+      name: 'Seconda asta',
+      status: 'live',
+    });
+
+    await setDoc(doc(db, 'auction_sessions', 'session-charlie'), {
+      owner_uid: 'charlie',
+      member_uids: ['charlie'],
+      name: 'Asta Charlie',
+      status: 'live',
+    });
+
     await setDoc(doc(db, 'auction_sessions', 'session-1', 'players', 'p1'), {
       name: 'Player One',
     });
@@ -66,6 +85,20 @@ test('legacy catalog is signed-in read-only', async () => {
   await assertFails(
     setDoc(doc(alice, 'players', 'new-player'), { name: 'No write' }),
   );
+});
+
+test('owner query by owner_uid and name ordering is allowed', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const ownedSessions = query(
+    collection(alice, 'auction_sessions'),
+    where('owner_uid', '==', 'alice'),
+    orderBy('name'),
+  );
+
+  const snapshot = await assertSucceeds(getDocs(ownedSessions));
+  if (snapshot.size !== 2) {
+    throw new Error(`Expected 2 owned sessions, got ${snapshot.size}.`);
+  }
 });
 
 test('session members can read while outsiders cannot', async () => {
