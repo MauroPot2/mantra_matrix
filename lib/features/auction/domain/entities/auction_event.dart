@@ -134,12 +134,14 @@ class AuctionEvent {
     required String id,
     required DateTime occurredAt,
     required String targetEventId,
+    int clockExtensionSeconds = 0,
   }) {
     return AuctionEvent._(
       id: id,
       type: AuctionEventType.eventReverted,
       occurredAt: occurredAt,
       targetEventId: targetEventId,
+      clockExtensionSeconds: clockExtensionSeconds,
     );
   }
 
