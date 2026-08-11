@@ -118,6 +118,13 @@ service cloud.firestore {
         request.resource.data.session_id == resource.data.session_id &&
         request.resource.data.invite_token == resource.data.invite_token &&
         request.resource.data.status in ['approved', 'rejected'] &&
+        (
+          request.resource.data.status == 'rejected' ||
+          (
+            request.resource.data.assigned_team_id is string &&
+            request.resource.data.assigned_team_id.size() > 0
+          )
+        ) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status',
           'assigned_team_id',
