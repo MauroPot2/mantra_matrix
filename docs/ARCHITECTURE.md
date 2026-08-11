@@ -2,14 +2,15 @@
 
 ## Boundaries
 
-Asta Matrix keeps four concerns separate:
+Asta Matrix keeps five concerns separate:
 
-1. **Player data source** — user import today, Matrix data source later.
+1. **Player data source** — explicit user import today, first-party Matrix data source later.
 2. **Auction domain** — deterministic commands, events, reducer and advisor.
 3. **Persistence** — isolated Firestore session snapshots and immutable events.
-4. **Realtime coordination** — one controller instance, many viewers, shared server-clock countdown.
+4. **Realtime coordination** — one owner/controller instance, many read-only viewers, shared server-clock countdown.
+5. **Sharing** — private invite tokens, join requests and owner-approved membership.
 
-The domain does not require a global third-party player catalog to create new sessions.
+The runtime has no dependency on a global third-party player catalog. Player data belongs to the auction that imported it.
 
 ## Session lifecycle
 
@@ -19,11 +20,13 @@ import -> setup -> session snapshot -> live auction -> completed
 
 Creating a session writes metadata first, initializes `live/current`, persists the player snapshot in bounded batches, and finally marks the snapshot ready. Event streaming begins only after the initial cloud save is confirmed.
 
+Closing an auction is cloud-authoritative: the local live session is cleared only after Firestore confirms the status update. A failed completion write leaves the live session open so it can be retried safely.
+
 ## Event sourcing
 
 Auction mutations are append-only events. The reducer rebuilds the effective state from the initial session snapshot plus the event sequence. Undo is represented by a compensating `eventReverted` event rather than destructive deletion.
 
-New realtime events receive a monotonically increasing `server_revision`. Legacy events without a revision are replayed before revisioned events.
+Realtime events receive a monotonically increasing `server_revision`. Optimistic local events are tracked explicitly as pending. The client renders confirmed server events in revision order and appends still-pending local events in their original production order. A partial Firestore ACK therefore cannot reorder a rapid sequence of bids.
 
 ## Realtime clock
 
@@ -38,11 +41,18 @@ The cloud stores:
 
 Clients render the countdown locally. No per-second Firestore writes are required. Each device calibrates its local clock against the latest Firestore server timestamp to reduce device clock skew.
 
-A real upward bid creates `bidRaised` and adds exactly the configured extension (MVP: 5 seconds). A manual downward correction does not extend the timer.
+A real upward bid creates `bidRaised` and adds exactly the configured extension (MVP: 5 seconds), regardless of the bid amount. A manual correction does not extend the timer.
+
+Undo has deterministic clock semantics:
+
+- undo bid raise: remove exactly the extension added by that raise while preserving `started_at`;
+- undo price correction: preserve the clock unchanged;
+- undo nomination: clear the clock;
+- undo assignment/skip/unavailable: reopen the call with a fresh countdown.
 
 ## Controller lease
 
-`live/current.controller_instance_id` identifies the app instance that may mutate the auction.
+`live/current.controller_instance_id` identifies the owner app instance that may mutate the auction.
 
 Every mutation uses a Firestore transaction that:
 
@@ -52,10 +62,27 @@ Every mutation uses a Firestore transaction that:
 4. assigns the next server revision;
 5. writes event, session metadata and live state atomically.
 
-A viewer may explicitly claim control. Claiming control does not reset the timer. The old controller is rejected on its next attempted mutation and reloads authoritative state.
+The client also mirrors the lease before applying optimistic events. A viewer therefore cannot create even a temporary local "ghost" mutation before Firestore rejects the write.
 
-## Compatibility
+Another device authenticated as the owner may explicitly claim control. Claiming control does not reset the timer. Cross-account members are viewer-only: Security Rules prevent them from changing `live`, events, player snapshots or session membership.
 
-The old global `/players` collection is a read-only migration bridge. Schema 7 sessions use their own `auction_sessions/{id}/players` snapshot. Opening an older session can migrate it into the new per-session representation.
+## Secure sharing
 
-Internal type names retained from the prototype can be renamed after the MVP without changing the public data-source boundary.
+Sharing uses a two-phase owner-approved protocol.
+
+1. The owner creates a 192-bit random invite token stored at `auction_sessions/{id}/private/sharing`.
+2. The share payload contains `session`, `owner` and the token using the `astamatrix://join` URI scheme.
+3. The recipient creates an `auction_join_requests/{sessionId}--{uid}` request.
+4. Only the requester and the indicated owner can read that request.
+5. The owner validates the current private invite token, assigns the requester to one auction team, adds the UID to `member_uids` and approves the request in a transaction.
+6. The approved member can read the session snapshot, event log and live clock, but remains unable to mutate them.
+
+Invite secrets remain in the owner-only `private` subcollection, so joining the auction never exposes the reusable token to other members.
+
+## Player data independence and compatibility
+
+Schema 7 is the minimum supported independent session format. Every supported auction contains its own `auction_sessions/{id}/players` snapshot.
+
+The old global `/players` collection is no longer read by the runtime and is denied by Firestore Security Rules. Pre-schema-7 sessions are intentionally rejected with a migration message instead of reopening the legacy global-catalog dependency.
+
+Internal prototype type names can be renamed after the MVP without changing the public data-source boundary.
