@@ -14,6 +14,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/auction_sessions/$(sessionId);
     }
 
+    function sharingPath(sessionId) {
+      return /databases/$(database)/documents/auction_sessions/$(sessionId)/private/sharing;
+    }
+
     function sessionExists(sessionId) {
       return exists(sessionPath(sessionId));
     }
@@ -29,6 +33,16 @@ service cloud.firestore {
       return signedIn() &&
         sessionExists(sessionId) &&
         get(sessionPath(sessionId)).data.owner_uid == request.auth.uid;
+    }
+
+    function hasValidInvite(sessionId, ownerUid, token) {
+      return sessionExists(sessionId) &&
+        get(sessionPath(sessionId)).data.owner_uid == ownerUid &&
+        exists(sharingPath(sessionId)) &&
+        get(sharingPath(sessionId)).data.owner_uid == ownerUid &&
+        get(sharingPath(sessionId)).data.session_id == sessionId &&
+        get(sharingPath(sessionId)).data.enabled == true &&
+        get(sharingPath(sessionId)).data.token == token;
     }
 
     match /users/{uid} {
@@ -90,20 +104,37 @@ service cloud.firestore {
     }
 
     // Protocollo di join a due fasi:
-    // 1) chi possiede il link crea una richiesta pending;
+    // 1) chi possiede un invito valido crea una richiesta pending;
     // 2) solo l'owner indicato può approvarla/rifiutarla;
     // 3) l'aggiunta a member_uids resta una write owner-only sulla sessione.
     match /auction_join_requests/{requestId} {
       allow create: if signedIn() &&
-        requestId == request.resource.data.session_id + '--' + request.auth.uid &&
-        request.resource.data.requester_uid == request.auth.uid &&
-        request.resource.data.owner_uid is string &&
-        request.resource.data.owner_uid != request.auth.uid &&
+        request.resource.data.keys().hasOnly([
+          'session_id',
+          'owner_uid',
+          'requester_uid',
+          'invite_token',
+          'status',
+          'created_at',
+          'updated_at'
+        ]) &&
         request.resource.data.session_id is string &&
         request.resource.data.session_id.size() > 0 &&
+        request.resource.data.owner_uid is string &&
+        request.resource.data.owner_uid.size() > 0 &&
+        request.resource.data.requester_uid == request.auth.uid &&
+        request.resource.data.owner_uid != request.auth.uid &&
         request.resource.data.invite_token is string &&
         request.resource.data.invite_token.size() >= 32 &&
-        request.resource.data.status == 'pending';
+        request.resource.data.status == 'pending' &&
+        request.resource.data.created_at == request.time &&
+        request.resource.data.updated_at == request.time &&
+        requestId == request.resource.data.session_id + '--' + request.auth.uid &&
+        hasValidInvite(
+          request.resource.data.session_id,
+          request.resource.data.owner_uid,
+          request.resource.data.invite_token
+        );
 
       allow read: if signedIn() && (
         resource.data.requester_uid == request.auth.uid ||
