@@ -10,6 +10,7 @@ import 'package:mantra_matrix/features/auction/domain/entities/auction_recommend
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/fantasy_team_entity.dart';
 import 'package:mantra_matrix/features/auction/domain/repositories/auction_session_repository.dart';
+import 'package:mantra_matrix/features/auction/domain/services/auction_event_merge_policy.dart';
 import 'package:mantra_matrix/features/auction/domain/services/auction_session_service.dart';
 import 'package:mantra_matrix/features/auction/domain/services/live_auction_advisor.dart';
 import 'package:mantra_matrix/features/auth/presentation/providers/auth_providers.dart';
@@ -124,9 +125,15 @@ class AuctionUiState {
 }
 
 class AuctionController extends Notifier<AuctionUiState> {
+  static const _mergePolicy = AuctionEventMergePolicy();
+
   final Set<Future<void>> _pendingPersistence = <Future<void>>{};
+  final List<String> _pendingEventIds = <String>[];
   StreamSubscription<List<AuctionEvent>>? _eventsSubscription;
+  StreamSubscription<AuctionLiveState?>? _liveStateSubscription;
   Future<void> _persistenceTail = Future<void>.value();
+  AuctionLiveState? _latestLiveState;
+  bool _liveStateResolved = false;
   int _restoreGeneration = 0;
   String? _subscribedSessionId;
 
@@ -142,6 +149,7 @@ class AuctionController extends Notifier<AuctionUiState> {
   AuctionUiState build() {
     ref.onDispose(() {
       unawaited(_eventsSubscription?.cancel());
+      unawaited(_liveStateSubscription?.cancel());
     });
 
     final ownerUid = ref.watch(currentUserUidProvider);
@@ -175,6 +183,8 @@ class AuctionController extends Notifier<AuctionUiState> {
       );
       return;
     }
+
+    _resetRealtimeTracking();
 
     final cleanPlayers = players
         .map(
@@ -219,6 +229,7 @@ class AuctionController extends Notifier<AuctionUiState> {
   void prepareNewSession() {
     _restoreGeneration++;
     _cancelEventSubscription();
+    _resetRealtimeTracking();
     state = const AuctionUiState(
       restoreStatus: AuctionRestoreStatus.completed,
       persistenceStatus: AuctionPersistenceStatus.idle,
@@ -231,6 +242,7 @@ class AuctionController extends Notifier<AuctionUiState> {
   }) async {
     final restoreGeneration = ++_restoreGeneration;
     _cancelEventSubscription();
+    _resetRealtimeTracking();
     state = const AuctionUiState(
       restoreStatus: AuctionRestoreStatus.restoring,
       persistenceStatus: AuctionPersistenceStatus.idle,
@@ -316,6 +328,7 @@ class AuctionController extends Notifier<AuctionUiState> {
 
     final restoreGeneration = ++_restoreGeneration;
     _cancelEventSubscription();
+    _resetRealtimeTracking();
     state = state.copyWith(
       restoreStatus: AuctionRestoreStatus.restoring,
       errorMessage: null,
@@ -383,6 +396,7 @@ class AuctionController extends Notifier<AuctionUiState> {
   void skipRestore() {
     _restoreGeneration++;
     _cancelEventSubscription();
+    _resetRealtimeTracking();
     state = state.copyWith(
       restoreStatus: AuctionRestoreStatus.completed,
       persistenceStatus: AuctionPersistenceStatus.idle,
@@ -475,6 +489,7 @@ class AuctionController extends Notifier<AuctionUiState> {
 
   void closeSession() {
     _cancelEventSubscription();
+    _resetRealtimeTracking();
     state = AuctionUiState(
       restoreStatus: AuctionRestoreStatus.completed,
       persistenceStatus: state.persistenceStatus,
@@ -486,6 +501,7 @@ class AuctionController extends Notifier<AuctionUiState> {
   void completeSession() {
     final session = state.session;
     if (session == null) return;
+    if (!_ensureControllerForMutation()) return;
 
     _cancelEventSubscription();
     _schedulePersistence(
@@ -508,6 +524,7 @@ class AuctionController extends Notifier<AuctionUiState> {
       state = state.copyWith(errorMessage: 'Nessuna asta attiva.');
       return;
     }
+    if (!_ensureControllerForMutation()) return;
 
     try {
       final updated = command(session);
@@ -519,6 +536,7 @@ class AuctionController extends Notifier<AuctionUiState> {
 
       final newEvent = updated.events.last;
       final previous = state;
+      _pendingEventIds.add(newEvent.id);
       state = _derive(updated, myTeamId: myTeamId).copyWith(
         restoreStatus: previous.restoreStatus,
         persistenceStatus: AuctionPersistenceStatus.pending,
@@ -533,7 +551,10 @@ class AuctionController extends Notifier<AuctionUiState> {
           event: newEvent,
           snapshotAfterEvent: snapshotAfterEvent,
         ),
-        onFailure: (_) => _recoverAuthoritativeSession(updated.id),
+        onFailure: (_) {
+          _pendingEventIds.remove(newEvent.id);
+          unawaited(_recoverAuthoritativeSession(updated.id));
+        },
       );
     } on AuctionSessionException catch (error) {
       state = state.copyWith(errorMessage: error.message.toString());
@@ -542,6 +563,34 @@ class AuctionController extends Notifier<AuctionUiState> {
     } on ArgumentError catch (error) {
       state = state.copyWith(errorMessage: error.message.toString());
     }
+  }
+
+  bool _ensureControllerForMutation() {
+    if (!_liveStateResolved) {
+      state = state.copyWith(
+        errorMessage:
+            'Controllo asta in allineamento. Riprova tra un istante.',
+      );
+      return false;
+    }
+
+    final live = _latestLiveState;
+    if (live == null) {
+      state = state.copyWith(
+        errorMessage: 'Stato realtime non disponibile. Riprova.',
+      );
+      return false;
+    }
+
+    if (!live.isControlledBy(_repository.instanceId)) {
+      state = state.copyWith(
+        errorMessage:
+            'Questo dispositivo è in modalità viewer. Prendi il controllo prima di modificare l’asta.',
+      );
+      return false;
+    }
+
+    return true;
   }
 
   Future<void> _recoverAuthoritativeSession(String sessionId) async {
@@ -554,6 +603,7 @@ class AuctionController extends Notifier<AuctionUiState> {
       );
       if (restored == null || state.session?.id != sessionId) return;
 
+      _pendingEventIds.clear();
       final previous = state;
       state = _derive(
         restored.session,
@@ -600,6 +650,23 @@ class AuctionController extends Notifier<AuctionUiState> {
             );
           },
         );
+    _liveStateSubscription = _repository
+        .watchLiveState(sessionId: sessionId)
+        .listen(
+          (liveState) {
+            if (state.session?.id != sessionId) return;
+            _latestLiveState = liveState;
+            _liveStateResolved = true;
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            if (state.session?.id != sessionId) return;
+            _latestLiveState = null;
+            _liveStateResolved = false;
+            state = state.copyWith(
+              errorMessage: 'Controllo realtime interrotto: $error',
+            );
+          },
+        );
   }
 
   void _mergeRemoteEvents(String sessionId, List<AuctionEvent> remoteEvents) {
@@ -607,18 +674,22 @@ class AuctionController extends Notifier<AuctionUiState> {
     final myTeamId = state.myTeamId;
     if (session == null || myTeamId == null || session.id != sessionId) return;
 
-    final byId = <String, AuctionEvent>{
-      for (final event in session.events) event.id: event,
-      for (final event in remoteEvents) event.id: event,
-    };
-    final merged = byId.values.toList(growable: false)..sort(_compareEvents);
+    final merge = _mergePolicy.merge(
+      localEvents: session.events,
+      remoteEvents: remoteEvents,
+      pendingEventIds: _pendingEventIds,
+    );
+    _pendingEventIds
+      ..clear()
+      ..addAll(merge.pendingEventIds);
+    final merged = merge.events;
 
     if (_sameEventSequence(session.events, merged)) return;
 
     final previous = state;
     try {
       state = _derive(
-        session.copyWith(events: List<AuctionEvent>.unmodifiable(merged)),
+        session.copyWith(events: merged),
         myTeamId: myTeamId,
       ).copyWith(
         restoreStatus: previous.restoreStatus,
@@ -633,21 +704,6 @@ class AuctionController extends Notifier<AuctionUiState> {
     }
   }
 
-  int _compareEvents(AuctionEvent a, AuctionEvent b) {
-    final aRevision = a.serverRevision;
-    final bRevision = b.serverRevision;
-
-    if (aRevision != null && bRevision != null) {
-      final byRevision = aRevision.compareTo(bRevision);
-      return byRevision != 0 ? byRevision : a.id.compareTo(b.id);
-    }
-    if (aRevision == null && bRevision != null) return -1;
-    if (aRevision != null && bRevision == null) return 1;
-
-    final byDate = a.occurredAt.compareTo(b.occurredAt);
-    return byDate != 0 ? byDate : a.id.compareTo(b.id);
-  }
-
   bool _sameEventSequence(List<AuctionEvent> a, List<AuctionEvent> b) {
     if (a.length != b.length) return false;
     for (var index = 0; index < a.length; index++) {
@@ -660,10 +716,21 @@ class AuctionController extends Notifier<AuctionUiState> {
   }
 
   void _cancelEventSubscription() {
-    final subscription = _eventsSubscription;
+    final eventSubscription = _eventsSubscription;
+    final liveSubscription = _liveStateSubscription;
     _eventsSubscription = null;
+    _liveStateSubscription = null;
     _subscribedSessionId = null;
-    if (subscription != null) unawaited(subscription.cancel());
+    _latestLiveState = null;
+    _liveStateResolved = false;
+    if (eventSubscription != null) unawaited(eventSubscription.cancel());
+    if (liveSubscription != null) unawaited(liveSubscription.cancel());
+  }
+
+  void _resetRealtimeTracking() {
+    _pendingEventIds.clear();
+    _latestLiveState = null;
+    _liveStateResolved = false;
   }
 
   Future<void> _schedulePersistence(
