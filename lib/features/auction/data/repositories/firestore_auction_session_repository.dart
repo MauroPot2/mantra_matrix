@@ -6,6 +6,7 @@ import 'package:mantra_matrix/features/auction/domain/entities/auction_session.d
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session_summary.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/fantasy_team_entity.dart';
 import 'package:mantra_matrix/features/auction/domain/repositories/auction_session_repository.dart';
+import 'package:mantra_matrix/features/auction/domain/services/auction_undo_clock_policy.dart';
 import 'package:mantra_matrix/features/player_database/data/models/player_model.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
 
@@ -19,6 +20,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   static const _snapshotReady = 'ready';
   static const _snapshotWriting = 'writing';
   static const _batchSize = 400;
+  static const _undoClockPolicy = AuctionUndoClockPolicy();
 
   final FirebaseFirestore _firestore;
   final String _ownerUid;
@@ -165,6 +167,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
         _livePatchFor(
           event,
           snapshotAfterEvent,
+          liveData: liveData,
           nextRevision: nextRevision,
         ),
         SetOptions(merge: true),
@@ -222,6 +225,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   Map<String, dynamic> _livePatchFor(
     AuctionEvent event,
     AuctionSessionSnapshot snapshot, {
+    required Map<String, dynamic> liveData,
     required int nextRevision,
   }) {
     final common = <String, dynamic>{
@@ -274,24 +278,47 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
         };
 
       case AuctionEventType.eventReverted:
-        if (snapshot.activePlayerId == null) {
-          return {
-            ...common,
-            'phase': AuctionClockPhase.idle.name,
-            'active_player_id': null,
-            'current_bid': 0,
-            'started_at': null,
-            'extension_seconds': 0,
-          };
+        final currentPhase = AuctionClockPhase.values.firstWhere(
+          (phase) => phase.name == liveData['phase']?.toString(),
+          orElse: () => AuctionClockPhase.idle,
+        );
+        final decision = _undoClockPolicy.decide(
+          undoEvent: event,
+          snapshotAfterUndo: snapshot,
+          currentPhase: currentPhase,
+          currentActivePlayerId: liveData['active_player_id']?.toString(),
+          currentExtensionSeconds:
+              (liveData['extension_seconds'] as num?)?.toInt() ?? 0,
+        );
+
+        switch (decision.action) {
+          case AuctionUndoClockAction.clear:
+            return {
+              ...common,
+              'phase': AuctionClockPhase.idle.name,
+              'active_player_id': null,
+              'current_bid': 0,
+              'started_at': null,
+              'extension_seconds': 0,
+            };
+          case AuctionUndoClockAction.preserve:
+            return {
+              ...common,
+              'phase': AuctionClockPhase.running.name,
+              'active_player_id': snapshot.activePlayerId,
+              'current_bid': snapshot.currentBid,
+              'extension_seconds': decision.extensionSeconds,
+            };
+          case AuctionUndoClockAction.restart:
+            return {
+              ...common,
+              'phase': AuctionClockPhase.running.name,
+              'active_player_id': snapshot.activePlayerId,
+              'current_bid': snapshot.currentBid,
+              'started_at': FieldValue.serverTimestamp(),
+              'extension_seconds': 0,
+            };
         }
-        return {
-          ...common,
-          'phase': AuctionClockPhase.running.name,
-          'active_player_id': snapshot.activePlayerId,
-          'current_bid': snapshot.currentBid,
-          'started_at': FieldValue.serverTimestamp(),
-          'extension_seconds': 0,
-        };
     }
   }
 
@@ -571,7 +598,8 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       );
     }
 
-    final eventQuery = await document.reference.collection(_eventsCollection).get();
+    final eventQuery =
+        await document.reference.collection(_eventsCollection).get();
     final events = eventQuery.docs.map((eventDocument) {
       final raw = Map<String, dynamic>.from(eventDocument.data());
       raw['id'] ??= eventDocument.id;
