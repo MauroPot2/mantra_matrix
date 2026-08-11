@@ -51,6 +51,53 @@ void main() {
     expect(result.events.map((event) => event.serverRevision), [1, 2]);
     expect(result.pendingEventIds, isEmpty);
   });
+
+  test('25 rapid raises stay ordered through progressive server ACKs', () {
+    final locals = List<AuctionEvent>.generate(
+      25,
+      (index) => raised(
+        'e${index + 1}',
+        minute: index + 1,
+        bid: (index + 1) * 7,
+      ),
+      growable: false,
+    );
+    final expectedIds = locals.map((event) => event.id).toList(growable: false);
+
+    List<AuctionEvent> merged = locals;
+    List<String> pending = expectedIds;
+
+    for (var confirmedCount = 1;
+        confirmedCount <= locals.length;
+        confirmedCount++) {
+      final remote = List<AuctionEvent>.generate(
+        confirmedCount,
+        (index) => withRevision(locals[index], index + 1),
+        growable: false,
+      ).reversed.toList(growable: false);
+
+      final result = policy.merge(
+        localEvents: merged,
+        remoteEvents: remote,
+        pendingEventIds: pending,
+      );
+      merged = result.events;
+      pending = result.pendingEventIds;
+
+      expect(merged.map((event) => event.id), expectedIds);
+      expect(pending.length, locals.length - confirmedCount);
+    }
+
+    expect(pending, isEmpty);
+    expect(merged.every((event) => event.serverRevision != null), isTrue);
+    expect(
+      merged.fold<int>(
+        0,
+        (total, event) => total + (event.clockExtensionSeconds ?? 0),
+      ),
+      125,
+    );
+  });
 }
 
 AuctionEvent raised(
