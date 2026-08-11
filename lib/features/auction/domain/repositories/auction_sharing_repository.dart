@@ -14,7 +14,7 @@ abstract class AuctionSharingRepository {
 
   Future<void> approveRequest({
     required String requestId,
-    String? assignedTeamId,
+    required String assignedTeamId,
   });
 
   Future<void> rejectRequest({required String requestId});
