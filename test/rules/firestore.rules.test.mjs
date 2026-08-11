@@ -13,12 +13,14 @@ import {
   getDocs,
   orderBy,
   query,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
 
 const projectId = 'demo-asta-matrix-rules';
+const validInviteToken = 'abcdefghijklmnopqrstuvwxyz123456';
 let env;
 
 before(async () => {
@@ -64,7 +66,7 @@ beforeEach(async () => {
         owner_uid: 'alice',
         session_id: 'session-2',
         enabled: true,
-        token: 'abcdefghijklmnopqrstuvwxyz123456',
+        token: validInviteToken,
       },
     );
 
@@ -96,6 +98,25 @@ beforeEach(async () => {
 after(async () => {
   await env.cleanup();
 });
+
+function joinRequestData({
+  sessionId = 'session-2',
+  ownerUid = 'alice',
+  requesterUid = 'bob',
+  token = validInviteToken,
+  extra = {},
+} = {}) {
+  return {
+    session_id: sessionId,
+    owner_uid: ownerUid,
+    requester_uid: requesterUid,
+    invite_token: token,
+    status: 'pending',
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+    ...extra,
+  };
+}
 
 test('global player catalog is inaccessible to clients', async () => {
   const anonymous = env.unauthenticatedContext().firestore();
@@ -239,16 +260,12 @@ test('join request is private to requester and owner', async () => {
   const alice = env.authenticatedContext('alice').firestore();
   const charlie = env.authenticatedContext('charlie').firestore();
   const requestId = 'session-2--bob';
-  const requestData = {
-    session_id: 'session-2',
-    owner_uid: 'alice',
-    requester_uid: 'bob',
-    invite_token: 'abcdefghijklmnopqrstuvwxyz123456',
-    status: 'pending',
-  };
 
   await assertSucceeds(
-    setDoc(doc(bob, 'auction_join_requests', requestId), requestData),
+    setDoc(
+      doc(bob, 'auction_join_requests', requestId),
+      joinRequestData(),
+    ),
   );
   await assertSucceeds(
     getDoc(doc(bob, 'auction_join_requests', requestId)),
@@ -266,17 +283,47 @@ test('join request is private to requester and owner', async () => {
   );
 });
 
+test('join request requires the current private invite token', async () => {
+  const bob = env.authenticatedContext('bob').firestore();
+
+  await assertFails(
+    setDoc(
+      doc(bob, 'auction_join_requests', 'session-2--bob'),
+      joinRequestData({ token: '0123456789abcdefghijklmnopqrstuv' }),
+    ),
+  );
+});
+
+test('join request rejects extra client-controlled fields', async () => {
+  const bob = env.authenticatedContext('bob').firestore();
+
+  await assertFails(
+    setDoc(
+      doc(bob, 'auction_join_requests', 'session-2--bob'),
+      joinRequestData({ extra: { assigned_team_id: 'team-bob' } }),
+    ),
+  );
+});
+
 test('join request cannot impersonate another requester', async () => {
   const bob = env.authenticatedContext('bob').firestore();
 
   await assertFails(
-    setDoc(doc(bob, 'auction_join_requests', 'session-2--charlie'), {
-      session_id: 'session-2',
-      owner_uid: 'alice',
-      requester_uid: 'charlie',
-      invite_token: 'abcdefghijklmnopqrstuvwxyz123456',
-      status: 'pending',
-    }),
+    setDoc(
+      doc(bob, 'auction_join_requests', 'session-2--charlie'),
+      joinRequestData({ requesterUid: 'charlie' }),
+    ),
+  );
+});
+
+test('join request cannot point at the wrong owner', async () => {
+  const bob = env.authenticatedContext('bob').firestore();
+
+  await assertFails(
+    setDoc(
+      doc(bob, 'auction_join_requests', 'session-2--bob'),
+      joinRequestData({ ownerUid: 'charlie' }),
+    ),
   );
 });
 
@@ -288,13 +335,10 @@ test('only owner can approve membership and approved member becomes viewer', asy
   await assertFails(getDoc(doc(bob, 'auction_sessions', 'session-2')));
 
   await assertSucceeds(
-    setDoc(doc(bob, 'auction_join_requests', requestId), {
-      session_id: 'session-2',
-      owner_uid: 'alice',
-      requester_uid: 'bob',
-      invite_token: 'abcdefghijklmnopqrstuvwxyz123456',
-      status: 'pending',
-    }),
+    setDoc(
+      doc(bob, 'auction_join_requests', requestId),
+      joinRequestData(),
+    ),
   );
 
   await assertFails(
@@ -316,6 +360,7 @@ test('only owner can approve membership and approved member becomes viewer', asy
     updateDoc(doc(alice, 'auction_join_requests', requestId), {
       status: 'approved',
       assigned_team_id: 'team-bob',
+      updated_at: serverTimestamp(),
     }),
   );
 
