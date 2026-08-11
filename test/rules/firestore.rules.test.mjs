@@ -97,12 +97,12 @@ after(async () => {
   await env.cleanup();
 });
 
-test('legacy catalog is signed-in read-only', async () => {
+test('global player catalog is inaccessible to clients', async () => {
   const anonymous = env.unauthenticatedContext().firestore();
   const alice = env.authenticatedContext('alice').firestore();
 
   await assertFails(getDoc(doc(anonymous, 'players', 'legacy-1')));
-  await assertSucceeds(getDoc(doc(alice, 'players', 'legacy-1')));
+  await assertFails(getDoc(doc(alice, 'players', 'legacy-1')));
   await assertFails(
     setDoc(doc(alice, 'players', 'new-player'), { name: 'No write' }),
   );
