@@ -67,8 +67,8 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // Stato effimero e minimale dell'asta. Il client proprietario aggiorna
-      // questo documento nello stesso batch dell'evento immutabile.
+      // Stato effimero e minimale dell'asta. Il controller proprietario
+      // aggiorna questo documento insieme all'evento autorevole.
       match /live/{liveDocument} {
         allow read: if isSessionMember(sessionId);
         allow create, update: if isSessionOwner(sessionId);
@@ -77,7 +77,7 @@ service cloud.firestore {
 
       match /events/{eventId} {
         allow read: if isSessionMember(sessionId);
-        allow create: if isSessionMember(sessionId) &&
+        allow create: if isSessionOwner(sessionId) &&
           request.resource.data.created_by_uid == request.auth.uid;
         allow update, delete: if false;
       }
