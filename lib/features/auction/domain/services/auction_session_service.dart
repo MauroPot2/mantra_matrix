@@ -238,7 +238,9 @@ class AuctionSessionService {
   }
 
   /// Annulla l'ultima azione effettiva aggiungendo un evento compensativo.
-  /// L'evento originale resta nel log per audit e sincronizzazione.
+  /// L'evento originale resta nel log per audit e sincronizzazione. Se il
+  /// target era un vero rilancio, l'evento di undo porta anche la compensazione
+  /// negativa dei secondi che quel rilancio aveva aggiunto al clock live.
   AuctionSession undoLast(
     AuctionSession session, {
     String? eventId,
@@ -252,6 +254,9 @@ class AuctionSessionService {
       throw const AuctionSessionException('Non ci sono azioni da annullare.');
     }
 
+    final clockCompensation = target.type == AuctionEventType.bidRaised
+        ? -(target.clockExtensionSeconds ?? 0)
+        : 0;
     final timestamp = occurredAt ?? DateTime.now().toUtc();
     return _append(
       session,
@@ -259,6 +264,7 @@ class AuctionSessionService {
         id: eventId ?? _eventId(session, timestamp),
         occurredAt: timestamp,
         targetEventId: target.id,
+        clockExtensionSeconds: clockCompensation,
       ),
     );
   }
