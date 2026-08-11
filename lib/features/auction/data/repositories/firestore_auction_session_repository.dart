@@ -12,6 +12,7 @@ import 'package:mantra_matrix/features/player_database/domain/entities/player_en
 
 class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   static const _schemaVersion = 7;
+  static const _minimumSupportedSchemaVersion = 7;
   static const _sessionsCollection = 'auction_sessions';
   static const _eventsCollection = 'events';
   static const _playersCollection = 'players';
@@ -51,6 +52,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       'schema_version': _schemaVersion,
       'owner_uid': _ownerUid,
       'member_uids': [_ownerUid],
+      'member_team_ids': {_ownerUid: myTeamId},
       'name': session.name,
       'status': session.status.name,
       'my_team_id': myTeamId,
@@ -424,7 +426,7 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     final document = await _sessions.doc(sessionId).get();
     if (!document.exists) return null;
 
-    return _restoreAndMigrate(document, legacyPlayers: players);
+    return _restoreSupportedSession(document);
   }
 
   @override
@@ -452,28 +454,22 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
         return bDate.compareTo(aDate);
       });
 
-    return _restoreAndMigrate(documents.first, legacyPlayers: players);
+    return _restoreSupportedSession(documents.first);
   }
 
-  Future<RestoredAuctionSession> _restoreAndMigrate(
-    DocumentSnapshot<Map<String, dynamic>> document, {
-    required List<PlayerEntity> legacyPlayers,
-  }) async {
+  Future<RestoredAuctionSession> _restoreSupportedSession(
+    DocumentSnapshot<Map<String, dynamic>> document,
+  ) async {
     final data = document.data();
     final schemaVersion = (data?['schema_version'] as num?)?.toInt() ?? 0;
-    final restored = await _restoreFromDocument(
-      document,
-      legacyPlayers: legacyPlayers,
-    );
-
-    if (schemaVersion < _schemaVersion) {
-      await saveSession(
-        session: restored.session,
-        myTeamId: restored.myTeamId,
+    if (schemaVersion < _minimumSupportedSchemaVersion) {
+      throw AuctionSessionPersistenceException(
+        'Questa sessione usa lo schema legacy $schemaVersion e non contiene '
+        'uno snapshot indipendente dei giocatori. Crea una nuova asta e '
+        'importa il tuo dataset.',
       );
     }
-
-    return restored;
+    return _restoreFromDocument(document);
   }
 
   @override
@@ -558,9 +554,8 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   }
 
   Future<RestoredAuctionSession> _restoreFromDocument(
-    DocumentSnapshot<Map<String, dynamic>> document, {
-    required List<PlayerEntity> legacyPlayers,
-  }) async {
+    DocumentSnapshot<Map<String, dynamic>> document,
+  ) async {
     final data = document.data();
     if (data == null) {
       throw const AuctionSessionPersistenceException(
@@ -569,9 +564,12 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
     }
 
     final ownerUid = data['owner_uid']?.toString();
-    if (ownerUid != _ownerUid) {
+    final rawMembers = data['member_uids'];
+    final isMember = rawMembers is List &&
+        rawMembers.any((item) => item.toString() == _ownerUid);
+    if (ownerUid != _ownerUid && !isMember) {
       throw const AuctionSessionPersistenceException(
-        'Questa asta appartiene a un altro account.',
+        'Non hai accesso a questa asta.',
       );
     }
 
@@ -581,20 +579,34 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
         'Sessione creata con uno schema più recente ($schemaVersion).',
       );
     }
+    if (schemaVersion < _minimumSupportedSchemaVersion) {
+      throw AuctionSessionPersistenceException(
+        'Sessione legacy non supportata (schema $schemaVersion).',
+      );
+    }
 
     final initialPlayers = await _restorePlayers(
       document,
       data: data,
-      schemaVersion: schemaVersion,
-      legacyPlayers: legacyPlayers,
     );
     final initialTeams = _readTeams(data['initial_teams']);
-    final myTeamId = data['my_team_id']?.toString();
+
+    String? myTeamId;
+    if (ownerUid == _ownerUid) {
+      myTeamId = data['my_team_id']?.toString();
+    } else {
+      final rawMemberTeams = data['member_team_ids'];
+      if (rawMemberTeams is Map) {
+        myTeamId = rawMemberTeams[_ownerUid]?.toString();
+      }
+    }
 
     if (myTeamId == null ||
+        myTeamId.isEmpty ||
         !initialTeams.any((team) => team.id == myTeamId)) {
       throw const AuctionSessionPersistenceException(
-        'La squadra personale della sessione non è valida.',
+        'Il tuo account è membro dell’asta ma non è ancora associato a una '
+        'squadra valida.',
       );
     }
 
@@ -626,28 +638,16 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
   Future<List<PlayerEntity>> _restorePlayers(
     DocumentSnapshot<Map<String, dynamic>> document, {
     required Map<String, dynamic> data,
-    required int schemaVersion,
-    required List<PlayerEntity> legacyPlayers,
   }) async {
-    if (schemaVersion >= 7) {
-      if (data['player_snapshot_status'] != _snapshotReady) {
-        throw const AuctionSessionPersistenceException(
-          'Il salvataggio del dataset dell’asta non è stato completato. '
-          'Riprova tra pochi secondi.',
-        );
-      }
-      return _readPlayerSubcollection(
-        document,
-        expectedIds: _readStringList(data['initial_player_ids']),
+    if (data['player_snapshot_status'] != _snapshotReady) {
+      throw const AuctionSessionPersistenceException(
+        'Il salvataggio del dataset dell’asta non è stato completato. '
+        'Riprova tra pochi secondi.',
       );
     }
-
-    final embeddedPlayers = _readEmbeddedPlayers(data['initial_players']);
-    if (embeddedPlayers != null) return embeddedPlayers;
-
-    return _restoreLegacyPlayers(
-      data['initial_player_ids'],
-      legacyPlayers: legacyPlayers,
+    return _readPlayerSubcollection(
+      document,
+      expectedIds: _readStringList(data['initial_player_ids']),
     );
   }
 
@@ -687,57 +687,6 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
         .toList(growable: false);
   }
 
-  static List<PlayerEntity>? _readEmbeddedPlayers(Object? rawPlayers) {
-    if (rawPlayers == null) return null;
-    if (rawPlayers is! List) {
-      throw const AuctionSessionPersistenceException(
-        'Lo snapshot dei giocatori salvato non è valido.',
-      );
-    }
-    if (rawPlayers.isEmpty) {
-      throw const AuctionSessionPersistenceException(
-        'Lo snapshot dei giocatori salvato è vuoto.',
-      );
-    }
-
-    try {
-      return rawPlayers.map((rawPlayer) {
-        if (rawPlayer is! Map) {
-          throw const FormatException('record giocatore non valido');
-        }
-        return PlayerModel.fromJson(Map<String, dynamic>.from(rawPlayer));
-      }).toList(growable: false);
-    } on FormatException catch (error) {
-      throw AuctionSessionPersistenceException(
-        'Snapshot giocatori non valido: ${error.message}',
-      );
-    }
-  }
-
-  static List<PlayerEntity> _restoreLegacyPlayers(
-    Object? rawPlayerIds, {
-    required List<PlayerEntity> legacyPlayers,
-  }) {
-    final playerIds = _readStringList(rawPlayerIds);
-    final playersById = {for (final player in legacyPlayers) player.id: player};
-    final missingIds = playerIds
-        .where((id) => !playersById.containsKey(id))
-        .toList(growable: false);
-
-    if (missingIds.isNotEmpty) {
-      final preview = missingIds.take(5).join(', ');
-      throw AuctionSessionPersistenceException(
-        'Impossibile ripristinare la sessione legacy: '
-        '${missingIds.length} giocatori non sono più nel vecchio catalogo '
-        '($preview).',
-      );
-    }
-
-    return playerIds
-        .map((id) => playersById[id]!)
-        .toList(growable: false);
-  }
-
   static int _compareEvents(AuctionEvent a, AuctionEvent b) {
     final aRevision = a.serverRevision;
     final bRevision = b.serverRevision;
@@ -748,8 +697,6 @@ class FirestoreAuctionSessionRepository implements AuctionSessionRepository {
       return a.id.compareTo(b.id);
     }
 
-    // Eventi senza revisione appartengono alla storia pre-migrazione e devono
-    // precedere gli eventi creati dopo l'adozione del controller lease.
     if (aRevision == null && bRevision != null) return -1;
     if (aRevision != null && bRevision == null) return 1;
 
