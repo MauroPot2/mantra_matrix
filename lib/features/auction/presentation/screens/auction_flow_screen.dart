@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mantra_matrix/features/auction/presentation/controllers/auction_controller.dart';
 import 'package:mantra_matrix/features/auction/presentation/screens/independent_auction_setup_screen.dart';
 import 'package:mantra_matrix/features/auction/presentation/screens/independent_live_auction_screen.dart';
+import 'package:mantra_matrix/features/auction/presentation/widgets/auction_control_banner.dart';
 import 'package:mantra_matrix/features/auction/presentation/widgets/shared_auction_clock.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
 import 'package:mantra_matrix/features/player_database/presentation/screens/player_import_screen.dart';
@@ -64,7 +65,7 @@ class _AuctionFlowScreenState extends ConsumerState<AuctionFlowScreen> {
         }
       },
       child: state.isStarted
-          ? _LiveAuctionWithClock(state: state)
+          ? _startedAuction(state)
           : _newSessionPlayers == null
               ? _PlayerSourceGate(onImport: _importPlayers)
               : _ImportedAuctionSetup(
@@ -72,6 +73,25 @@ class _AuctionFlowScreenState extends ConsumerState<AuctionFlowScreen> {
                   onChangeDataset: _changeDataset,
                 ),
     );
+  }
+
+  Widget _startedAuction(AuctionUiState state) {
+    final initialSyncComplete = state.lastPersistedAt != null;
+
+    if (!initialSyncComplete) {
+      if (state.persistenceStatus == AuctionPersistenceStatus.failed) {
+        return _InitialSyncFailureScreen(
+          error: state.persistenceError,
+          onBack: () {
+            ref.read(auctionControllerProvider.notifier).closeSession();
+          },
+        );
+      }
+
+      return const _InitialSyncPreparingScreen();
+    }
+
+    return _LiveAuctionWithClock(state: state);
   }
 }
 
@@ -84,15 +104,21 @@ class _LiveAuctionWithClock extends StatelessWidget {
   Widget build(BuildContext context) {
     final session = state.session!;
     final hasActivePlayer = state.snapshot?.activePlayerId != null;
-    final clockCanReadCloud = state.lastPersistedAt != null;
     final compact = MediaQuery.sizeOf(context).width < 820;
 
     return Stack(
       children: [
         const IndependentLiveAuctionScreen(),
-        if (hasActivePlayer && clockCanReadCloud)
+        Positioned(
+          top: compact ? 74 : 72,
+          left: 12,
+          child: SafeArea(
+            child: AuctionControlBanner(sessionId: session.id),
+          ),
+        ),
+        if (hasActivePlayer)
           Positioned(
-            top: compact ? 86 : 76,
+            top: compact ? 176 : 72,
             right: 12,
             child: SafeArea(
               child: IgnorePointer(
@@ -101,6 +127,144 @@ class _LiveAuctionWithClock extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _InitialSyncPreparingScreen extends StatelessWidget {
+  const _InitialSyncPreparingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Preparazione asta')),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: const Padding(
+              padding: EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 22),
+                  Text(
+                    'Preparazione realtime…',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'Sto salvando dataset, stato live e controller lease. '
+                    'I comandi d’asta si attivano solo quando Firestore ha '
+                    'confermato la sessione.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InitialSyncFailureScreen extends StatelessWidget {
+  final String? error;
+  final VoidCallback onBack;
+
+  const _InitialSyncFailureScreen({
+    required this.error,
+    required this.onBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final rawError = error?.trim() ?? 'Errore Firestore non disponibile.';
+    final lower = rawError.toLowerCase();
+    final permissionDenied = lower.contains('permission-denied') ||
+        lower.contains('permission_denied');
+
+    final title = permissionDenied
+        ? 'Configurazione Firestore non aggiornata'
+        : 'Sincronizzazione iniziale non riuscita';
+    final message = permissionDenied
+        ? 'Questa build usa lo stato realtime per-sessione '
+            '`auction_sessions/.../live/current`. Firestore sta rifiutando '
+            'l’accesso: le Security Rules distribuite sul progetto non sono '
+            'ancora allineate alla branch. Aggiorna le rules e crea di nuovo '
+            'l’asta.'
+        : 'Asta Matrix non avvia un’asta locale quando il backend realtime '
+            'non è pronto. In questo modo timer, rilanci e rose non possono '
+            'divergire tra dispositivi.';
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Realtime non disponibile')),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 650),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: colors.errorContainer.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: colors.outlineVariant),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Icon(
+                      Icons.cloud_off_rounded,
+                      size: 54,
+                      color: colors.error,
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(message, textAlign: TextAlign.center),
+                    const SizedBox(height: 18),
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: const EdgeInsets.only(bottom: 12),
+                      title: const Text('Dettagli tecnici'),
+                      children: [
+                        SelectableText(
+                          rawError,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: onBack,
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      label: const Text('Torna alla configurazione'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
