@@ -503,17 +503,21 @@ class AuctionController extends Notifier<AuctionUiState> {
     if (session == null) return;
     if (!_ensureControllerForMutation()) return;
 
-    _cancelEventSubscription();
     _schedulePersistence(
       () => _repository.updateStatus(
         sessionId: session.id,
         status: AuctionSessionStatus.completed,
       ),
-    );
-
-    state = AuctionUiState(
-      restoreStatus: AuctionRestoreStatus.completed,
-      persistenceStatus: AuctionPersistenceStatus.pending,
+      onSuccess: () {
+        if (state.session?.id != session.id) return;
+        _cancelEventSubscription();
+        _resetRealtimeTracking();
+        state = AuctionUiState(
+          restoreStatus: AuctionRestoreStatus.completed,
+          persistenceStatus: AuctionPersistenceStatus.synced,
+          lastPersistedAt: DateTime.now().toUtc(),
+        );
+      },
     );
   }
 
@@ -735,6 +739,7 @@ class AuctionController extends Notifier<AuctionUiState> {
 
   Future<void> _schedulePersistence(
     Future<void> Function() operation, {
+    void Function()? onSuccess,
     void Function(Object error)? onFailure,
   }) {
     state = state.copyWith(
@@ -748,6 +753,7 @@ class AuctionController extends Notifier<AuctionUiState> {
     late final Future<void> tracked;
     tracked = queued
         .then((_) {
+          onSuccess?.call();
           if (_pendingPersistence.length <= 1) {
             state = state.copyWith(
               persistenceStatus: AuctionPersistenceStatus.synced,
