@@ -152,7 +152,7 @@ class FirestoreAuctionSharingRepository implements AuctionSharingRepository {
   @override
   Future<void> approveRequest({
     required String requestId,
-    String? assignedTeamId,
+    required String assignedTeamId,
   }) async {
     final requestRef = _requests.doc(requestId);
 
@@ -205,8 +205,7 @@ class FirestoreAuctionSharingRepository implements AuctionSharingRepository {
       }
 
       final teams = sessionData['initial_teams'];
-      if (assignedTeamId != null &&
-          !_containsTeam(teams, assignedTeamId)) {
+      if (!_containsTeam(teams, assignedTeamId)) {
         throw AuctionSharingException(
           'La squadra $assignedTeamId non appartiene a questa asta.',
         );
@@ -220,18 +219,16 @@ class FirestoreAuctionSharingRepository implements AuctionSharingRepository {
       if (ownerTeamId != null && ownerTeamId.isNotEmpty) {
         memberTeamIds.putIfAbsent(currentUid, () => ownerTeamId);
       }
-      if (assignedTeamId != null) {
-        final alreadyAssigned = memberTeamIds.entries.any(
-          (entry) =>
-              entry.key != requesterUid && entry.value == assignedTeamId,
+
+      final alreadyAssigned = memberTeamIds.entries.any(
+        (entry) => entry.key != requesterUid && entry.value == assignedTeamId,
+      );
+      if (alreadyAssigned) {
+        throw AuctionSharingException(
+          'La squadra $assignedTeamId è già associata a un altro membro.',
         );
-        if (alreadyAssigned) {
-          throw AuctionSharingException(
-            'La squadra $assignedTeamId è già associata a un altro membro.',
-          );
-        }
-        memberTeamIds[requesterUid] = assignedTeamId;
       }
+      memberTeamIds[requesterUid] = assignedTeamId;
 
       transaction.update(sessionRef, {
         'member_uids': members,
@@ -240,7 +237,7 @@ class FirestoreAuctionSharingRepository implements AuctionSharingRepository {
       });
       transaction.update(requestRef, {
         'status': AuctionJoinRequestStatus.approved.name,
-        if (assignedTeamId != null) 'assigned_team_id': assignedTeamId,
+        'assigned_team_id': assignedTeamId,
         'updated_at': FieldValue.serverTimestamp(),
       });
     });
