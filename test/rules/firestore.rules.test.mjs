@@ -51,7 +51,22 @@ beforeEach(async () => {
       member_uids: ['alice'],
       name: 'Seconda asta',
       status: 'live',
+      my_team_id: 'team-alice',
+      initial_teams: [
+        { id: 'team-alice', name: 'Alice FC', credits_remaining: 100 },
+        { id: 'team-bob', name: 'Bob FC', credits_remaining: 100 },
+      ],
     });
+
+    await setDoc(
+      doc(db, 'auction_sessions', 'session-2', 'private', 'sharing'),
+      {
+        owner_uid: 'alice',
+        session_id: 'session-2',
+        enabled: true,
+        token: 'abcdefghijklmnopqrstuvwxyz123456',
+      },
+    );
 
     await setDoc(doc(db, 'auction_sessions', 'session-charlie'), {
       owner_uid: 'charlie',
@@ -65,6 +80,12 @@ beforeEach(async () => {
     });
 
     await setDoc(doc(db, 'auction_sessions', 'session-1', 'live', 'current'), {
+      phase: 'idle',
+      revision: 0,
+      controller_instance_id: 'controller-a',
+    });
+
+    await setDoc(doc(db, 'auction_sessions', 'session-2', 'live', 'current'), {
       phase: 'idle',
       revision: 0,
       controller_instance_id: 'controller-a',
@@ -190,5 +211,126 @@ test('owner cannot transfer session ownership by update', async () => {
       owner_uid: 'bob',
       member_uids: ['alice', 'bob'],
     }),
+  );
+});
+
+test('invite secret remains owner-only even for session members', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const bob = env.authenticatedContext('bob').firestore();
+  const sharingPath = [
+    'auction_sessions',
+    'session-2',
+    'private',
+    'sharing',
+  ];
+
+  await assertSucceeds(getDoc(doc(alice, ...sharingPath)));
+  await assertFails(getDoc(doc(bob, ...sharingPath)));
+  await assertFails(
+    setDoc(doc(bob, ...sharingPath), {
+      enabled: true,
+      token: 'malicious-token-that-is-long-enough',
+    }),
+  );
+});
+
+test('join request is private to requester and owner', async () => {
+  const bob = env.authenticatedContext('bob').firestore();
+  const alice = env.authenticatedContext('alice').firestore();
+  const charlie = env.authenticatedContext('charlie').firestore();
+  const requestId = 'session-2--bob';
+  const requestData = {
+    session_id: 'session-2',
+    owner_uid: 'alice',
+    requester_uid: 'bob',
+    invite_token: 'abcdefghijklmnopqrstuvwxyz123456',
+    status: 'pending',
+  };
+
+  await assertSucceeds(
+    setDoc(doc(bob, 'auction_join_requests', requestId), requestData),
+  );
+  await assertSucceeds(
+    getDoc(doc(bob, 'auction_join_requests', requestId)),
+  );
+  await assertSucceeds(
+    getDoc(doc(alice, 'auction_join_requests', requestId)),
+  );
+  await assertFails(
+    getDoc(doc(charlie, 'auction_join_requests', requestId)),
+  );
+  await assertFails(
+    updateDoc(doc(bob, 'auction_join_requests', requestId), {
+      status: 'approved',
+    }),
+  );
+});
+
+test('join request cannot impersonate another requester', async () => {
+  const bob = env.authenticatedContext('bob').firestore();
+
+  await assertFails(
+    setDoc(doc(bob, 'auction_join_requests', 'session-2--charlie'), {
+      session_id: 'session-2',
+      owner_uid: 'alice',
+      requester_uid: 'charlie',
+      invite_token: 'abcdefghijklmnopqrstuvwxyz123456',
+      status: 'pending',
+    }),
+  );
+});
+
+test('only owner can approve membership and approved member becomes viewer', async () => {
+  const bob = env.authenticatedContext('bob').firestore();
+  const alice = env.authenticatedContext('alice').firestore();
+  const requestId = 'session-2--bob';
+
+  await assertFails(getDoc(doc(bob, 'auction_sessions', 'session-2')));
+
+  await assertSucceeds(
+    setDoc(doc(bob, 'auction_join_requests', requestId), {
+      session_id: 'session-2',
+      owner_uid: 'alice',
+      requester_uid: 'bob',
+      invite_token: 'abcdefghijklmnopqrstuvwxyz123456',
+      status: 'pending',
+    }),
+  );
+
+  await assertFails(
+    updateDoc(doc(bob, 'auction_sessions', 'session-2'), {
+      member_uids: ['alice', 'bob'],
+    }),
+  );
+
+  await assertSucceeds(
+    updateDoc(doc(alice, 'auction_sessions', 'session-2'), {
+      member_uids: ['alice', 'bob'],
+      member_team_ids: {
+        alice: 'team-alice',
+        bob: 'team-bob',
+      },
+    }),
+  );
+  await assertSucceeds(
+    updateDoc(doc(alice, 'auction_join_requests', requestId), {
+      status: 'approved',
+      assigned_team_id: 'team-bob',
+    }),
+  );
+
+  await assertSucceeds(getDoc(doc(bob, 'auction_sessions', 'session-2')));
+  await assertSucceeds(
+    getDoc(doc(bob, 'auction_sessions', 'session-2', 'live', 'current')),
+  );
+  await assertFails(
+    updateDoc(doc(bob, 'auction_sessions', 'session-2', 'live', 'current'), {
+      revision: 99,
+    }),
+  );
+  await assertFails(
+    getDoc(
+      doc(bob, 'auction_sessions', 'session-2', 'private', 'sharing'),
+    ),
   );
 });
