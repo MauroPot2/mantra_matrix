@@ -11,7 +11,13 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
   bool failWrites = false;
 
   @override
-  final String instanceId = 'test-instance';
+  final String instanceId;
+  final String liveControllerInstanceId;
+
+  InMemoryAuctionSessionRepository({
+    this.instanceId = 'test-instance',
+    String? liveControllerInstanceId,
+  }) : liveControllerInstanceId = liveControllerInstanceId ?? instanceId;
 
   @override
   Future<void> saveSession({
@@ -61,7 +67,7 @@ class InMemoryAuctionSessionRepository implements AuctionSessionRepository {
         extensionSeconds: 0,
         revision: 0,
         updatedAt: DateTime.now().toUtc(),
-        controllerInstanceId: instanceId,
+        controllerInstanceId: liveControllerInstanceId,
       ),
     );
   }
