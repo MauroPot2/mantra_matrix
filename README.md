@@ -84,6 +84,19 @@ auction_sessions/{sessionId}/live/current
 
 Il countdown **non viene scritto ogni secondo**. Firestore conserva solo il timestamp server di partenza e le estensioni; ogni device anima il timer localmente.
 
+### Precondizione per testare il realtime
+
+Il codice della branch e le Security Rules devono essere distribuiti insieme. Prima di creare una nuova asta sul progetto reale `mantra-matrix-d8b2a`, pubblica le rules e gli indici presenti nella stessa revisione:
+
+```bash
+firebase use mantra-matrix-d8b2a
+firebase deploy --only firestore:rules,firestore:indexes
+```
+
+Dopo il deploy crea **una nuova asta**. Una sessione creata mentre erano attive rules precedenti può essere rimasta incompleta e non va usata per validare countdown o controller lease.
+
+Se la creazione cloud viene rifiutata, Asta Matrix non entra più in una finta sessione locale: mostra `Realtime non disponibile` e mantiene i comandi bloccati finché Firestore non ha confermato dataset, `live/current` e lease del controller.
+
 ## Concorrenza multi-device
 
 Una singola istanza possiede il lease `controller_instance_id`.
@@ -105,7 +118,7 @@ Nessuna nuova asta scrive nel catalogo globale.
 
 ## Qualità
 
-La GitHub Action esegue:
+La GitHub Action Flutter esegue:
 
 ```bash
 flutter pub get
@@ -113,6 +126,8 @@ flutter analyze --no-fatal-infos
 flutter test
 flutter build apk --debug --no-pub
 ```
+
+Le Firestore Security Rules vengono inoltre validate con l'emulatore usando Java 21. I test verificano accesso owner/viewer, catalogo legacy read-only, dati per-sessione ed eventi immutabili owner-only.
 
 `pubspec.lock` risolto dalla CI viene pubblicato temporaneamente come artifact durante la transizione.
 
