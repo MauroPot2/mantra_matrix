@@ -190,6 +190,88 @@ void main() {
     expect(state.errorMessage, contains('modalità viewer'));
   });
 
+  test('conclude la sessione solo dopo il commit autorevole', () async {
+    final repository = InMemoryAuctionSessionRepository();
+    final container = ProviderContainer(
+      overrides: [
+        auctionSessionRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(auctionControllerProvider.notifier);
+    controller.startSession(
+      sessionName: 'Asta da chiudere',
+      myTeamId: 'me',
+      config: const AuctionConfig(
+        initialCredits: 100,
+        rosterSize: 3,
+        minimumBid: 1,
+      ),
+      players: [player('p1')],
+      teams: const [
+        FantasyTeamEntity(
+          id: 'me',
+          name: 'Matrix FC',
+          creditsRemaining: 100,
+        ),
+      ],
+    );
+    await readyForCommands(controller);
+    final sessionId = container.read(auctionControllerProvider).session!.id;
+
+    controller.completeSession();
+    expect(container.read(auctionControllerProvider).session, isNotNull);
+
+    await controller.waitForPendingPersistence();
+
+    expect(container.read(auctionControllerProvider).session, isNull);
+    expect(
+      repository.sessions[sessionId]!.session.status.name,
+      'completed',
+    );
+  });
+
+  test('se la chiusura cloud fallisce mantiene aperta la sessione locale', () async {
+    final repository = InMemoryAuctionSessionRepository();
+    final container = ProviderContainer(
+      overrides: [
+        auctionSessionRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(auctionControllerProvider.notifier);
+    controller.startSession(
+      sessionName: 'Asta resiliente',
+      myTeamId: 'me',
+      config: const AuctionConfig(
+        initialCredits: 100,
+        rosterSize: 3,
+        minimumBid: 1,
+      ),
+      players: [player('p1')],
+      teams: const [
+        FantasyTeamEntity(
+          id: 'me',
+          name: 'Matrix FC',
+          creditsRemaining: 100,
+        ),
+      ],
+    );
+    await readyForCommands(controller);
+    repository.failWrites = true;
+
+    controller.completeSession();
+    await controller.waitForPendingPersistence();
+
+    final state = container.read(auctionControllerProvider);
+    expect(state.session, isNotNull);
+    expect(state.isStarted, isTrue);
+    expect(state.persistenceStatus, AuctionPersistenceStatus.failed);
+    expect(state.persistenceError, contains('write failed'));
+  });
+
   test('apre una specifica asta selezionata dalla home', () async {
     final repository = InMemoryAuctionSessionRepository();
     final container = ProviderContainer(
