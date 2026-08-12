@@ -10,8 +10,10 @@ import 'package:mantra_matrix/features/auction/domain/repositories/auction_shari
 class FirestoreAuctionSharingRepository implements AuctionSharingRepository {
   static const _sessionsCollection = 'auction_sessions';
   static const _requestsCollection = 'auction_join_requests';
+  static const _inviteCodesCollection = 'auction_invite_codes';
   static const _privateCollection = 'private';
   static const _sharingDocument = 'sharing';
+  static const _entryCodeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
   final FirebaseFirestore firestore;
   final String currentUid;
@@ -29,43 +31,82 @@ class FirestoreAuctionSharingRepository implements AuctionSharingRepository {
   CollectionReference<Map<String, dynamic>> get _requests =>
       firestore.collection(_requestsCollection);
 
+  CollectionReference<Map<String, dynamic>> get _inviteCodes =>
+      firestore.collection(_inviteCodesCollection);
+
   @override
   Future<AuctionShareInvite> createInvite({required String sessionId}) async {
     final sessionRef = _sessions.doc(sessionId);
     final sharingRef = sessionRef
         .collection(_privateCollection)
         .doc(_sharingDocument);
-    final token = _newToken();
 
-    await firestore.runTransaction((transaction) async {
-      final session = await transaction.get(sessionRef);
-      final data = session.data();
-      if (!session.exists || data == null) {
-        throw const AuctionSharingException('Asta non trovata.');
-      }
-      if (data['owner_uid']?.toString() != currentUid) {
-        throw const AuctionSharingException(
-          'Solo il proprietario può creare un invito.',
+    for (var attempt = 0; attempt < 8; attempt++) {
+      final token = _newToken();
+      final entryCode = _newEntryCode();
+      final codeRef = _inviteCodes.doc(entryCode);
+
+      try {
+        await firestore.runTransaction((transaction) async {
+          final session = await transaction.get(sessionRef);
+          final sharing = await transaction.get(sharingRef);
+          final code = await transaction.get(codeRef);
+          final data = session.data();
+
+          if (!session.exists || data == null) {
+            throw const AuctionSharingException('Asta non trovata.');
+          }
+          if (data['owner_uid']?.toString() != currentUid) {
+            throw const AuctionSharingException(
+              'Solo il proprietario può creare un invito.',
+            );
+          }
+          if (code.exists) {
+            throw const _InviteCodeCollision();
+          }
+
+          final previousCode = sharing.data()?['entry_code']?.toString();
+          if (previousCode != null &&
+              previousCode.isNotEmpty &&
+              previousCode != entryCode) {
+            transaction.delete(_inviteCodes.doc(previousCode));
+          }
+
+          transaction.set(
+            sharingRef,
+            {
+              'owner_uid': currentUid,
+              'session_id': sessionId,
+              'enabled': true,
+              'token': token,
+              'entry_code': entryCode,
+              'updated_at': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true),
+          );
+          transaction.set(codeRef, {
+            'owner_uid': currentUid,
+            'session_id': sessionId,
+            'token': token,
+            'enabled': true,
+            'created_at': FieldValue.serverTimestamp(),
+            'updated_at': FieldValue.serverTimestamp(),
+          });
+        });
+
+        return AuctionShareInvite(
+          sessionId: sessionId,
+          ownerUid: currentUid,
+          token: token,
+          entryCode: entryCode,
         );
+      } on _InviteCodeCollision {
+        continue;
       }
+    }
 
-      transaction.set(
-        sharingRef,
-        {
-          'owner_uid': currentUid,
-          'session_id': sessionId,
-          'enabled': true,
-          'token': token,
-          'updated_at': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-    });
-
-    return AuctionShareInvite(
-      sessionId: sessionId,
-      ownerUid: currentUid,
-      token: token,
+    throw const AuctionSharingException(
+      'Impossibile generare un codice di ingresso univoco. Riprova.',
     );
   }
 
@@ -78,6 +119,7 @@ class FirestoreAuctionSharingRepository implements AuctionSharingRepository {
 
     await firestore.runTransaction((transaction) async {
       final session = await transaction.get(sessionRef);
+      final sharing = await transaction.get(sharingRef);
       final data = session.data();
       if (!session.exists || data == null) {
         throw const AuctionSharingException('Asta non trovata.');
@@ -88,6 +130,11 @@ class FirestoreAuctionSharingRepository implements AuctionSharingRepository {
         );
       }
 
+      final previousCode = sharing.data()?['entry_code']?.toString();
+      if (previousCode != null && previousCode.isNotEmpty) {
+        transaction.delete(_inviteCodes.doc(previousCode));
+      }
+
       transaction.set(
         sharingRef,
         {
@@ -95,11 +142,51 @@ class FirestoreAuctionSharingRepository implements AuctionSharingRepository {
           'session_id': sessionId,
           'enabled': false,
           'token': FieldValue.delete(),
+          'entry_code': FieldValue.delete(),
           'updated_at': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
     });
+  }
+
+  @override
+  Future<String> requestAccessByCode({required String entryCode}) async {
+    final normalized = AuctionShareInvite.normalizeEntryCode(entryCode);
+    if (normalized.length != 8) {
+      throw const AuctionSharingException(
+        'Il codice di ingresso deve contenere 8 caratteri.',
+      );
+    }
+
+    final snapshot = await _inviteCodes.doc(normalized).get();
+    final data = snapshot.data();
+    if (!snapshot.exists || data == null || data['enabled'] != true) {
+      throw const AuctionSharingException(
+        'Codice non valido o invito non più attivo.',
+      );
+    }
+
+    final sessionId = data['session_id']?.toString();
+    final ownerUid = data['owner_uid']?.toString();
+    final token = data['token']?.toString();
+    if (sessionId == null ||
+        sessionId.isEmpty ||
+        ownerUid == null ||
+        ownerUid.isEmpty ||
+        token == null ||
+        token.length < 32) {
+      throw const AuctionSharingException('Codice di ingresso non valido.');
+    }
+
+    return requestAccess(
+      invite: AuctionShareInvite(
+        sessionId: sessionId,
+        ownerUid: ownerUid,
+        token: token,
+        entryCode: normalized,
+      ),
+    );
   }
 
   @override
@@ -355,6 +442,14 @@ class FirestoreAuctionSharingRepository implements AuctionSharingRepository {
     return base64UrlEncode(bytes).replaceAll('=', '');
   }
 
+  String _newEntryCode() {
+    return List<String>.generate(
+      8,
+      (_) => _entryCodeAlphabet[_secureRandom.nextInt(_entryCodeAlphabet.length)],
+      growable: false,
+    ).join();
+  }
+
   static bool _containsTeam(Object? rawTeams, String teamId) {
     if (rawTeams is! List) return false;
     return rawTeams.any(
@@ -393,4 +488,8 @@ class FirestoreAuctionSharingRepository implements AuctionSharingRepository {
     return _readNullableDate(value) ??
         DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
   }
+}
+
+class _InviteCodeCollision implements Exception {
+  const _InviteCodeCollision();
 }
