@@ -35,6 +35,51 @@ final auctionJoinRequestProvider = StreamProvider.autoDispose
       .watchRequest(requestId: requestId);
 });
 
+/// Invito privato attualmente attivo dell'owner.
+///
+/// Serve alla UI per riaprire il pannello Condividi senza rigenerare token e
+/// codice, così le richieste già inviate restano approvabili.
+final currentAuctionShareInviteProvider = FutureProvider.autoDispose
+    .family<AuctionShareInvite?, String>((ref, sessionId) async {
+  final uid = ref.watch(currentUserUidProvider);
+  if (uid == null) return null;
+
+  final document = await ref
+      .watch(firebaseFirestoreProvider)
+      .collection('auction_sessions')
+      .doc(sessionId)
+      .collection('private')
+      .doc('sharing')
+      .get();
+  final data = document.data();
+  if (!document.exists ||
+      data == null ||
+      data['enabled'] != true ||
+      data['owner_uid']?.toString() != uid) {
+    return null;
+  }
+
+  final ownerUid = data['owner_uid']?.toString();
+  final token = data['token']?.toString();
+  final entryCode = AuctionShareInvite.normalizeEntryCode(
+    data['entry_code']?.toString() ?? '',
+  );
+  if (ownerUid == null ||
+      ownerUid.isEmpty ||
+      token == null ||
+      token.length < 32 ||
+      entryCode.length != 8) {
+    return null;
+  }
+
+  return AuctionShareInvite(
+    sessionId: sessionId,
+    ownerUid: ownerUid,
+    token: token,
+    entryCode: entryCode,
+  );
+});
+
 final auctionSessionOwnershipProvider =
     FutureProvider.autoDispose.family<bool, String>((ref, sessionId) async {
   final uid = ref.watch(currentUserUidProvider);
