@@ -34,6 +34,7 @@ class _IndependentAuctionSetupScreenState
   final List<TextEditingController> _teamNames = [];
   final Map<PlayerDepartment, TextEditingController> _budgets = {};
 
+  AuctionCallMode _callMode = AuctionCallMode.manual;
   String _primaryFormation = '4-2-3-1';
   final Set<String> _secondaryFormations = {'4-3-3', '4-4-2'};
 
@@ -141,6 +142,41 @@ class _IndependentAuctionSetupScreenState
                       ),
                     ],
                   ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              _SectionCard(
+                title: 'Modalità di chiamata',
+                subtitle: _callMode == AuctionCallMode.random
+                    ? 'Il prossimo giocatore viene deciso soltanto quando premi Estrai. Nessuna sequenza futura viene generata o mostrata.'
+                    : 'Selezioni manualmente il giocatore dal mercato durante l’asta.',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SegmentedButton<AuctionCallMode>(
+                      segments: const [
+                        ButtonSegment(
+                          value: AuctionCallMode.manual,
+                          icon: Icon(Icons.search_rounded),
+                          label: Text('Manuale'),
+                        ),
+                        ButtonSegment(
+                          value: AuctionCallMode.random,
+                          icon: Icon(Icons.casino_outlined),
+                          label: Text('Random'),
+                        ),
+                      ],
+                      selected: {_callMode},
+                      onSelectionChanged: (selection) {
+                        if (selection.isEmpty) return;
+                        setState(() => _callMode = selection.first);
+                      },
+                    ),
+                    if (_callMode == AuctionCallMode.random) ...[
+                      const SizedBox(height: 14),
+                      const _RandomModeNotice(),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(height: 14),
@@ -419,6 +455,7 @@ class _IndependentAuctionSetupScreenState
             minimumBid: int.parse(_minimumBid.text),
             countdownSeconds: int.parse(_countdown.text),
             bidExtensionSeconds: 5,
+            callMode: _callMode,
             primaryFormationName: _primaryFormation,
             secondaryFormationNames: _secondaryFormations,
             departmentBudgets: {
@@ -429,6 +466,34 @@ class _IndependentAuctionSetupScreenState
           players: widget.players,
           teams: teams,
         );
+  }
+}
+
+class _RandomModeNotice extends StatelessWidget {
+  const _RandomModeNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.secondaryContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.visibility_off_outlined),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Niente lista preordinata e niente anteprima: ogni estrazione usa soltanto i giocatori ancora mai chiamati in quel momento. Gli invenduti restano separati per un eventuale richiamo successivo.',
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
