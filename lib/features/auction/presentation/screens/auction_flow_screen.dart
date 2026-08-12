@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mantra_matrix/features/auction/presentation/controllers/auction_controller.dart';
 import 'package:mantra_matrix/features/auction/presentation/screens/independent_auction_setup_screen.dart';
 import 'package:mantra_matrix/features/auction/presentation/screens/independent_live_auction_screen.dart';
-import 'package:mantra_matrix/features/auction/presentation/widgets/auction_control_banner.dart';
-import 'package:mantra_matrix/features/auction/presentation/widgets/shared_auction_clock.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
 import 'package:mantra_matrix/features/player_database/presentation/screens/player_import_screen.dart';
 
@@ -14,8 +12,6 @@ import 'package:mantra_matrix/features/player_database/presentation/screens/play
 /// sessione, invece, deve scegliere esplicitamente il proprio dataset prima di
 /// accedere al setup: il catalogo globale non viene più usato implicitamente.
 class AuctionFlowScreen extends ConsumerStatefulWidget {
-  /// Catalogo temporaneamente mantenuto solo per la compatibilità con il
-  /// ripristino delle aste legacy. Non viene usato per creare nuove aste.
   final List<PlayerEntity> players;
 
   const AuctionFlowScreen({required this.players, super.key});
@@ -91,43 +87,9 @@ class _AuctionFlowScreenState extends ConsumerState<AuctionFlowScreen> {
       return const _InitialSyncPreparingScreen();
     }
 
-    return _LiveAuctionWithClock(state: state);
-  }
-}
-
-class _LiveAuctionWithClock extends StatelessWidget {
-  final AuctionUiState state;
-
-  const _LiveAuctionWithClock({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final session = state.session!;
-    final hasActivePlayer = state.snapshot?.activePlayerId != null;
-    final compact = MediaQuery.sizeOf(context).width < 820;
-
-    return Stack(
-      children: [
-        const IndependentLiveAuctionScreen(),
-        Positioned(
-          top: compact ? 74 : 72,
-          left: 12,
-          child: SafeArea(
-            child: AuctionControlBanner(sessionId: session.id),
-          ),
-        ),
-        if (hasActivePlayer)
-          Positioned(
-            top: compact ? 176 : 72,
-            right: 12,
-            child: SafeArea(
-              child: IgnorePointer(
-                child: SharedAuctionClock(session: session),
-              ),
-            ),
-          ),
-      ],
-    );
+    // Timer e stato Controller/Viewer ora fanno parte del cockpit live. Non
+    // aggiungiamo più overlay assoluti che coprono pulsanti o duplicano il clock.
+    return const IndependentLiveAuctionScreen();
   }
 }
 
