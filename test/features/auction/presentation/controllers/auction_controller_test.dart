@@ -7,7 +7,7 @@ import 'package:mantra_matrix/features/player_database/domain/entities/player_en
 import '../../../../helpers/in_memory_auction_session_repository.dart';
 
 void main() {
-  test('controller coordina chiamata, consiglio, assegnazione e undo', () {
+  test('controller coordina chiamata, consiglio, assegnazione e undo', () async {
     final repository = InMemoryAuctionSessionRepository();
     final container = ProviderContainer(
       overrides: [
@@ -40,6 +40,7 @@ void main() {
         ),
       ],
     );
+    await readyForCommands(controller);
 
     controller.nominatePlayer('p1');
     expect(container.read(auctionControllerProvider).snapshot!.activePlayerId, 'p1');
@@ -61,7 +62,7 @@ void main() {
     expect(state.recommendation, isNotNull);
   });
 
-  test('controller espone un errore senza corrompere la sessione', () {
+  test('controller espone un errore senza corrompere la sessione', () async {
     final repository = InMemoryAuctionSessionRepository();
     final container = ProviderContainer(
       overrides: [
@@ -88,6 +89,7 @@ void main() {
         ),
       ],
     );
+    await readyForCommands(controller);
 
     controller.nominatePlayer('p1');
     controller.setCurrentBid(9);
@@ -98,7 +100,8 @@ void main() {
     expect(state.snapshot!.activePlayerId, 'p1');
     expect(state.snapshot!.teamsById['me']!.creditsRemaining, 10);
   });
-  test('mantiene i nomi delle squadre e separa gli svincolati', () {
+
+  test('mantiene i nomi delle squadre e separa gli svincolati', () async {
     final repository = InMemoryAuctionSessionRepository();
     final container = ProviderContainer(
       overrides: [
@@ -130,6 +133,7 @@ void main() {
         ),
       ],
     );
+    await readyForCommands(controller);
 
     var state = container.read(auctionControllerProvider);
     expect(
@@ -143,6 +147,129 @@ void main() {
 
     expect(state.snapshot!.unsoldPlayers.single.id, 'p1');
     expect(state.snapshot!.uncalledPlayers.single.id, 'p2');
+  });
+
+  test('blocca i comandi ottimistici quando il dispositivo è viewer', () async {
+    final repository = InMemoryAuctionSessionRepository(
+      instanceId: 'viewer-instance',
+      liveControllerInstanceId: 'other-controller',
+    );
+    final container = ProviderContainer(
+      overrides: [
+        auctionSessionRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(auctionControllerProvider.notifier);
+    controller.startSession(
+      sessionName: 'Asta viewer',
+      myTeamId: 'me',
+      config: const AuctionConfig(
+        initialCredits: 100,
+        rosterSize: 3,
+        minimumBid: 1,
+      ),
+      players: [player('p1')],
+      teams: const [
+        FantasyTeamEntity(
+          id: 'me',
+          name: 'Matrix FC',
+          creditsRemaining: 100,
+        ),
+      ],
+    );
+    await readyForCommands(controller);
+
+    controller.nominatePlayer('p1');
+
+    final state = container.read(auctionControllerProvider);
+    expect(state.snapshot!.activePlayerId, isNull);
+    expect(state.session!.events, isEmpty);
+    expect(repository.appendedEvents, isEmpty);
+    expect(state.errorMessage, contains('modalità viewer'));
+  });
+
+  test('conclude la sessione solo dopo il commit autorevole', () async {
+    final repository = InMemoryAuctionSessionRepository();
+    final container = ProviderContainer(
+      overrides: [
+        auctionSessionRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(auctionControllerProvider.notifier);
+    controller.startSession(
+      sessionName: 'Asta da chiudere',
+      myTeamId: 'me',
+      config: const AuctionConfig(
+        initialCredits: 100,
+        rosterSize: 3,
+        minimumBid: 1,
+      ),
+      players: [player('p1')],
+      teams: const [
+        FantasyTeamEntity(
+          id: 'me',
+          name: 'Matrix FC',
+          creditsRemaining: 100,
+        ),
+      ],
+    );
+    await readyForCommands(controller);
+    final sessionId = container.read(auctionControllerProvider).session!.id;
+
+    controller.completeSession();
+    expect(container.read(auctionControllerProvider).session, isNotNull);
+
+    await controller.waitForPendingPersistence();
+
+    expect(container.read(auctionControllerProvider).session, isNull);
+    expect(
+      repository.sessions[sessionId]!.session.status.name,
+      'completed',
+    );
+  });
+
+  test('se la chiusura cloud fallisce mantiene aperta la sessione locale', () async {
+    final repository = InMemoryAuctionSessionRepository();
+    final container = ProviderContainer(
+      overrides: [
+        auctionSessionRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(auctionControllerProvider.notifier);
+    controller.startSession(
+      sessionName: 'Asta resiliente',
+      myTeamId: 'me',
+      config: const AuctionConfig(
+        initialCredits: 100,
+        rosterSize: 3,
+        minimumBid: 1,
+      ),
+      players: [player('p1')],
+      teams: const [
+        FantasyTeamEntity(
+          id: 'me',
+          name: 'Matrix FC',
+          creditsRemaining: 100,
+        ),
+      ],
+    );
+    await readyForCommands(controller);
+    repository.failWrites = true;
+
+    controller.completeSession();
+    await controller.waitForPendingPersistence();
+
+    final state = container.read(auctionControllerProvider);
+    expect(state.session, isNotNull);
+    expect(state.isStarted, isTrue);
+    expect(state.persistenceStatus, AuctionPersistenceStatus.failed);
+    expect(state.persistenceError, contains('write failed'));
   });
 
   test('apre una specifica asta selezionata dalla home', () async {
@@ -189,7 +316,12 @@ void main() {
     expect(state.isStarted, isTrue);
     expect(state.session!.name, 'Asta da riprendere');
   });
+}
 
+Future<void> readyForCommands(AuctionController controller) async {
+  await controller.waitForPendingPersistence();
+  await Future<void>.delayed(Duration.zero);
+  await Future<void>.delayed(Duration.zero);
 }
 
 PlayerEntity player(String id) {

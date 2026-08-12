@@ -1,0 +1,211 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function sessionPath(sessionId) {
+      return /databases/$(database)/documents/auction_sessions/$(sessionId);
+    }
+
+    function sharingPath(sessionId) {
+      return /databases/$(database)/documents/auction_sessions/$(sessionId)/private/sharing;
+    }
+
+    function sessionExists(sessionId) {
+      return exists(sessionPath(sessionId));
+    }
+
+    function isSessionMember(sessionId) {
+      return signedIn() &&
+        sessionExists(sessionId) &&
+        get(sessionPath(sessionId)).data.member_uids is list &&
+        request.auth.uid in get(sessionPath(sessionId)).data.member_uids;
+    }
+
+    function isSessionOwner(sessionId) {
+      return signedIn() &&
+        sessionExists(sessionId) &&
+        get(sessionPath(sessionId)).data.owner_uid == request.auth.uid;
+    }
+
+    function hasValidInvite(sessionId, ownerUid, token) {
+      return sessionExists(sessionId) &&
+        get(sessionPath(sessionId)).data.owner_uid == ownerUid &&
+        exists(sharingPath(sessionId)) &&
+        get(sharingPath(sessionId)).data.owner_uid == ownerUid &&
+        get(sharingPath(sessionId)).data.session_id == sessionId &&
+        get(sharingPath(sessionId)).data.enabled == true &&
+        get(sharingPath(sessionId)).data.token == token;
+    }
+
+    match /users/{uid} {
+      allow read: if isSelf(uid);
+      allow create, update: if isSelf(uid) &&
+        request.resource.data.uid == request.auth.uid;
+      allow delete: if isSelf(uid);
+    }
+
+    match /auction_sessions/{sessionId} {
+      allow create: if signedIn() &&
+        request.resource.data.owner_uid == request.auth.uid &&
+        request.resource.data.member_uids is list &&
+        request.auth.uid in request.resource.data.member_uids;
+
+      // I GET puntuali possono usare i dati reali del documento.
+      allow get: if signedIn() && (
+        resource.data.owner_uid == request.auth.uid ||
+        (
+          resource.data.member_uids is list &&
+          request.auth.uid in resource.data.member_uids
+        )
+      );
+
+      // Le query sono valutate contro il loro possibile result set. Teniamo
+      // separati owner e membership per evitare che un campo non vincolato
+      // nel query plan renda undefined l'altro ramo della condizione OR.
+      allow list: if signedIn() &&
+        resource.data.owner_uid == request.auth.uid;
+      allow list: if signedIn() &&
+        request.auth.uid in resource.data.member_uids;
+
+      allow update: if isSessionOwner(sessionId) &&
+        request.resource.data.owner_uid == resource.data.owner_uid &&
+        request.resource.data.member_uids is list &&
+        resource.data.owner_uid in request.resource.data.member_uids;
+
+      allow delete: if isSessionOwner(sessionId);
+
+      match /players/{playerId} {
+        allow read: if isSessionMember(sessionId);
+        allow create, update: if isSessionOwner(sessionId);
+        allow delete: if false;
+      }
+
+      match /live/{liveDocument} {
+        allow read: if isSessionMember(sessionId);
+        allow create, update: if isSessionOwner(sessionId);
+        allow delete: if false;
+      }
+
+      match /events/{eventId} {
+        allow read: if isSessionMember(sessionId);
+        allow create: if isSessionOwner(sessionId) &&
+          request.resource.data.created_by_uid == request.auth.uid;
+        allow update, delete: if false;
+      }
+
+      match /private/{privateDocument} {
+        allow read, create, update, delete: if isSessionOwner(sessionId);
+      }
+    }
+
+    // Codice umano di ingresso. È consentito soltanto un GET puntuale al
+    // documento conosciuto: nessuna query/list permette di enumerare codici.
+    match /auction_invite_codes/{entryCode} {
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn() &&
+        entryCode.size() == 8 &&
+        request.resource.data.keys().hasOnly([
+          'owner_uid',
+          'session_id',
+          'token',
+          'enabled',
+          'created_at',
+          'updated_at'
+        ]) &&
+        request.resource.data.owner_uid == request.auth.uid &&
+        request.resource.data.session_id is string &&
+        request.resource.data.session_id.size() > 0 &&
+        isSessionOwner(request.resource.data.session_id) &&
+        request.resource.data.token is string &&
+        request.resource.data.token.size() >= 32 &&
+        request.resource.data.enabled == true &&
+        request.resource.data.created_at == request.time &&
+        request.resource.data.updated_at == request.time;
+
+      // Un codice viene rigenerato creando un nuovo documento e cancellando
+      // quello precedente. Evitiamo update parziali difficili da auditare.
+      allow update: if false;
+      allow delete: if signedIn() &&
+        resource.data.owner_uid == request.auth.uid &&
+        isSessionOwner(resource.data.session_id);
+    }
+
+    match /auction_join_requests/{requestId} {
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly([
+          'session_id',
+          'owner_uid',
+          'requester_uid',
+          'invite_token',
+          'status',
+          'created_at',
+          'updated_at'
+        ]) &&
+        request.resource.data.session_id is string &&
+        request.resource.data.session_id.size() > 0 &&
+        request.resource.data.owner_uid is string &&
+        request.resource.data.owner_uid.size() > 0 &&
+        request.resource.data.requester_uid == request.auth.uid &&
+        request.resource.data.owner_uid != request.auth.uid &&
+        request.resource.data.invite_token is string &&
+        request.resource.data.invite_token.size() >= 32 &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.created_at == request.time &&
+        request.resource.data.updated_at == request.time &&
+        requestId == request.resource.data.session_id + '--' + request.auth.uid &&
+        hasValidInvite(
+          request.resource.data.session_id,
+          request.resource.data.owner_uid,
+          request.resource.data.invite_token
+        );
+
+      allow read: if signedIn() && (
+        resource.data.requester_uid == request.auth.uid ||
+        resource.data.owner_uid == request.auth.uid
+      );
+
+      allow update: if signedIn() &&
+        resource.data.owner_uid == request.auth.uid &&
+        resource.data.status == 'pending' &&
+        request.resource.data.owner_uid == resource.data.owner_uid &&
+        request.resource.data.requester_uid == resource.data.requester_uid &&
+        request.resource.data.session_id == resource.data.session_id &&
+        request.resource.data.invite_token == resource.data.invite_token &&
+        request.resource.data.status in ['approved', 'rejected'] &&
+        (
+          request.resource.data.status == 'rejected' ||
+          (
+            request.resource.data.assigned_team_id is string &&
+            request.resource.data.assigned_team_id.size() > 0
+          )
+        ) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'assigned_team_id',
+          'updated_at'
+        ]);
+
+      allow delete: if signedIn() && (
+        resource.data.owner_uid == request.auth.uid ||
+        (
+          resource.data.requester_uid == request.auth.uid &&
+          resource.data.status == 'pending'
+        )
+      );
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

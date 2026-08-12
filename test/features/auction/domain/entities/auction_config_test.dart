@@ -3,9 +3,10 @@ import 'package:mantra_matrix/features/auction/domain/entities/auction_config.da
 import 'package:mantra_matrix/features/auction/domain/entities/auction_strategy.dart';
 
 void main() {
-  test('serializza e ripristina strategia tattica e budget reparto', () {
+  test('serializza e ripristina strategia, budget e modalità chiamata', () {
     final original = AuctionConfig.standardMantra(
       initialCredits: 500,
+      callMode: AuctionCallMode.random,
       primaryFormationName: '4-3-3',
       secondaryFormationNames: const {'4-2-3-1', '4-4-2'},
       departmentBudgets: const {
@@ -18,6 +19,8 @@ void main() {
 
     final restored = AuctionConfig.fromJson(original.toJson());
 
+    expect(restored.callMode, AuctionCallMode.random);
+    expect(restored.usesRandomDraw, isTrue);
     expect(restored.primaryFormationName, '4-3-3');
     expect(restored.secondaryFormationNames, {'4-2-3-1', '4-4-2'});
     expect(restored.departmentBudgetFor(PlayerDepartment.goalkeepers), 30);
@@ -26,7 +29,7 @@ void main() {
     expect(restored.isDepartmentBudgetPlanBalanced, isTrue);
   });
 
-  test('una configurazione legacy riceve budget e moduli predefiniti', () {
+  test('una configurazione legacy usa chiamata manuale e default esistenti', () {
     final restored = AuctionConfig.fromJson({
       'initial_credits': 500,
       'valuation_reference_credits': 1000,
@@ -35,6 +38,7 @@ void main() {
       'target_coverage': <String, int>{},
     });
 
+    expect(restored.callMode, AuctionCallMode.manual);
     expect(restored.primaryFormationName, '4-2-3-1');
     expect(restored.secondaryFormationNames, contains('4-3-3'));
     expect(restored.plannedBudgetTotal, 500);

@@ -1,5 +1,14 @@
-/// I ruoli ufficiali del sistema Mantra.
+/// Ruoli tattici attualmente supportati dal motore d'asta.
+///
+/// Il nome del tipo resta invariato durante la migrazione per non rompere il
+/// motore esistente; in una fase successiva verrà reso completamente neutrale.
 enum MantraRole { por, dc, b, dd, ds, e, m, c, t, w, a, pc }
+
+/// Provenienza dei dati del calciatore.
+///
+/// Serve a distinguere chiaramente dati prodotti da Matrix, dati importati
+/// dall'utente e record provenienti dal vecchio catalogo durante la transizione.
+enum PlayerDataOrigin { matrix, userImport, legacyCatalog }
 
 /// Stato del calciatore all'interno della sessione d'asta.
 enum DraftStatus { available, drafted, unavailable }
@@ -12,6 +21,13 @@ class PlayerEntity {
   final String team;
   final List<MantraRole> roles;
   final int basePrice;
+
+  /// Traccia la provenienza del record senza legare il dominio a un provider.
+  final PlayerDataOrigin dataOrigin;
+
+  /// Etichetta opzionale definita da Matrix o dall'utente, mai necessaria al
+  /// funzionamento del motore.
+  final String? sourceLabel;
 
   final double expectedGoals;
   final double expectedAssists;
@@ -43,6 +59,8 @@ class PlayerEntity {
     required this.team,
     required this.roles,
     required this.basePrice,
+    this.dataOrigin = PlayerDataOrigin.matrix,
+    this.sourceLabel,
     required this.expectedGoals,
     required this.expectedAssists,
     required this.expectedGoals90,
@@ -65,14 +83,16 @@ class PlayerEntity {
        assert(basePrice >= 0),
        assert(historicalMinutes >= 0);
 
-  /// [draftedByTeamId] e [purchasePrice] usano un sentinel per consentire
-  /// anche l'azzeramento esplicito dei valori nullable.
+  /// [draftedByTeamId], [purchasePrice] e [sourceLabel] usano un sentinel per
+  /// consentire anche l'azzeramento esplicito dei valori nullable.
   PlayerEntity copyWith({
     String? id,
     String? name,
     String? team,
     List<MantraRole>? roles,
     int? basePrice,
+    PlayerDataOrigin? dataOrigin,
+    Object? sourceLabel = _unset,
     double? expectedGoals,
     double? expectedAssists,
     double? expectedGoals90,
@@ -98,6 +118,10 @@ class PlayerEntity {
       team: team ?? this.team,
       roles: roles ?? this.roles,
       basePrice: basePrice ?? this.basePrice,
+      dataOrigin: dataOrigin ?? this.dataOrigin,
+      sourceLabel: identical(sourceLabel, _unset)
+          ? this.sourceLabel
+          : sourceLabel as String?,
       expectedGoals: expectedGoals ?? this.expectedGoals,
       expectedAssists: expectedAssists ?? this.expectedAssists,
       expectedGoals90: expectedGoals90 ?? this.expectedGoals90,

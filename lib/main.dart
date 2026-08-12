@@ -13,16 +13,16 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  runApp(const ProviderScope(child: MantraMatrixApp()));
+  runApp(const ProviderScope(child: AstaMatrixApp()));
 }
 
-class MantraMatrixApp extends StatelessWidget {
-  const MantraMatrixApp({super.key});
+class AstaMatrixApp extends StatelessWidget {
+  const AstaMatrixApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Mantra Matrix',
+      title: 'Asta Matrix',
       debugShowCheckedModeBanner: false,
       theme: MantraMatrixTheme.light,
       darkTheme: MantraMatrixTheme.dark,

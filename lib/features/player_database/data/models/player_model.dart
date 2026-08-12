@@ -7,6 +7,8 @@ class PlayerModel extends PlayerEntity {
     required super.team,
     required super.roles,
     required super.basePrice,
+    super.dataOrigin,
+    super.sourceLabel,
     required super.expectedGoals,
     required super.expectedAssists,
     required super.expectedGoals90,
@@ -27,7 +29,38 @@ class PlayerModel extends PlayerEntity {
     super.purchasePrice,
   });
 
-  /// Accetta sia il payload del backend sia i campi già presenti in Firestore.
+  factory PlayerModel.fromEntity(PlayerEntity player) {
+    return PlayerModel(
+      id: player.id,
+      name: player.name,
+      team: player.team,
+      roles: player.roles,
+      basePrice: player.basePrice,
+      dataOrigin: player.dataOrigin,
+      sourceLabel: player.sourceLabel,
+      expectedGoals: player.expectedGoals,
+      expectedAssists: player.expectedAssists,
+      expectedGoals90: player.expectedGoals90,
+      expectedAssists90: player.expectedAssists90,
+      expectedYellowCards: player.expectedYellowCards,
+      historicalMinutes: player.historicalMinutes,
+      expectedGoalsConceded: player.expectedGoalsConceded,
+      expectedCleanSheets: player.expectedCleanSheets,
+      isPenaltyTaker: player.isPenaltyTaker,
+      isFreeKickTaker: player.isFreeKickTaker,
+      isInjured: player.isInjured,
+      isSuspended: player.isSuspended,
+      expectedPoints: player.expectedPoints,
+      polyvalenceMultiplier: player.polyvalenceMultiplier,
+      vorp: player.vorp,
+      status: player.status,
+      draftedByTeamId: player.draftedByTeamId,
+      purchasePrice: player.purchasePrice,
+    );
+  }
+
+  /// Accetta sia il payload corrente sia, solo durante la migrazione, alcuni
+  /// campi del vecchio catalogo Firestore.
   /// [documentId] evita di dover duplicare l'id dentro ogni documento Firestore.
   factory PlayerModel.fromJson(
     Map<String, dynamic> json, {
@@ -43,11 +76,15 @@ class PlayerModel extends PlayerEntity {
       name: _requiredString(json, const ['name']),
       team: _requiredString(json, const ['team']),
       roles: _parseRoles(json['roles'] ?? json['role']),
+      // `fvm` resta soltanto come fallback di lettura per i documenti legacy.
+      // I nuovi snapshot Matrix persistono esclusivamente `base_price`.
       basePrice: _readInt(
         json,
-        const ['fvm', 'base_price', 'basePrice'],
+        const ['base_price', 'basePrice', 'fvm'],
         fallback: 1,
       ),
+      dataOrigin: _parseDataOrigin(json['data_origin']),
+      sourceLabel: _readString(json, const ['source_label', 'sourceLabel']),
       expectedGoals: _readDouble(json, const ['xG', 'expected_goals']),
       expectedAssists: _readDouble(json, const ['xA', 'expected_assists']),
       expectedGoals90: _readDouble(json, const ['xG90', 'expected_goals_90']),
@@ -83,13 +120,18 @@ class PlayerModel extends PlayerEntity {
     );
   }
 
+  /// Formato neutrale usato per i nuovi dati Matrix e per gli snapshot d'asta.
+  /// Non scrive più il campo legacy `fvm`.
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
       'team': team,
       'roles': roles.map((role) => role.name.toUpperCase()).join(';'),
-      'fvm': basePrice,
+      'base_price': basePrice,
+      'data_origin': dataOrigin.name,
+      if (sourceLabel != null && sourceLabel!.trim().isNotEmpty)
+        'source_label': sourceLabel,
       'xG': expectedGoals,
       'xA': expectedAssists,
       'xG90': expectedGoals90,
@@ -138,6 +180,14 @@ class PlayerModel extends PlayerEntity {
       if (role.name == value) return role;
     }
     return null;
+  }
+
+  static PlayerDataOrigin _parseDataOrigin(dynamic rawOrigin) {
+    final value = rawOrigin?.toString().trim();
+    return PlayerDataOrigin.values.firstWhere(
+      (origin) => origin.name == value,
+      orElse: () => PlayerDataOrigin.legacyCatalog,
+    );
   }
 
   static DraftStatus _parseStatus(dynamic rawStatus) {

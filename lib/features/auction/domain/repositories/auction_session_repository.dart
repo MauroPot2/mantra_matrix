@@ -1,4 +1,5 @@
 import 'package:mantra_matrix/features/auction/domain/entities/auction_event.dart';
+import 'package:mantra_matrix/features/auction/domain/entities/auction_live_state.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session.dart';
 import 'package:mantra_matrix/features/auction/domain/entities/auction_session_summary.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
@@ -14,32 +15,35 @@ class RestoredAuctionSession {
 }
 
 abstract class AuctionSessionRepository {
-  /// Crea o aggiorna i metadati della sessione.
-  /// Deve essere idempotente: richiamarlo con lo stesso ID non deve duplicare dati.
+  /// Identificatore effimero dell'istanza app corrente. Serve a garantire che
+  /// una sola istanza alla volta produca mutazioni dell'asta.
+  String get instanceId;
+
   Future<void> saveSession({
     required AuctionSession session,
     required String myTeamId,
   });
 
-  /// Accoda un singolo evento immutabile alla sessione.
   Future<void> appendEvent({
     required String sessionId,
     required AuctionEvent event,
+    required AuctionSessionSnapshot snapshotAfterEvent,
   });
 
+  Stream<List<AuctionEvent>> watchEvents({required String sessionId});
 
-  /// Osserva tutte le aste appartenenti all'utente corrente.
-  /// La query concreta deve essere vincolata all'owner UID, così da essere
-  /// compatibile con le regole Firestore (le rules non filtrano i risultati).
+  Stream<AuctionLiveState?> watchLiveState({required String sessionId});
+
+  /// Trasferisce esplicitamente il controllo dell'asta all'istanza app corrente.
+  Future<void> claimControl({required String sessionId});
+
   Stream<List<AuctionSessionSummary>> watchOwnedSessions();
 
-  /// Ripristina una sessione usando il catalogo giocatori già caricato.
   Future<RestoredAuctionSession?> loadSession({
     required String sessionId,
     required List<PlayerEntity> players,
   });
 
-  /// Recupera la sessione live più recente, se presente.
   Future<RestoredAuctionSession?> loadLatestActiveSession({
     required List<PlayerEntity> players,
   });

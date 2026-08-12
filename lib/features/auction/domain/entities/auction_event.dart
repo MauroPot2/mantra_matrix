@@ -1,6 +1,7 @@
 enum AuctionEventType {
   playerNominated,
   bidChanged,
+  bidRaised,
   playerAssigned,
   playerSkipped,
   playerMarkedUnavailable,
@@ -14,8 +15,13 @@ class AuctionEvent {
   final String? playerId;
   final String? teamId;
   final int? amount;
+  final int? clockExtensionSeconds;
   final String? targetEventId;
   final String? note;
+
+  /// Revisione assegnata dal backend al commit dell'evento.
+  /// Gli eventi precedenti allo schema realtime possono non averla.
+  final int? serverRevision;
 
   const AuctionEvent._({
     required this.id,
@@ -24,8 +30,10 @@ class AuctionEvent {
     this.playerId,
     this.teamId,
     this.amount,
+    this.clockExtensionSeconds,
     this.targetEventId,
     this.note,
+    this.serverRevision,
   });
 
   bool get isReversion => type == AuctionEventType.eventReverted;
@@ -34,12 +42,14 @@ class AuctionEvent {
     required String id,
     required DateTime occurredAt,
     required String playerId,
+    required int startingBid,
   }) {
     return AuctionEvent._(
       id: id,
       type: AuctionEventType.playerNominated,
       occurredAt: occurredAt,
       playerId: playerId,
+      amount: startingBid,
     );
   }
 
@@ -55,6 +65,23 @@ class AuctionEvent {
       occurredAt: occurredAt,
       playerId: playerId,
       amount: bid,
+    );
+  }
+
+  factory AuctionEvent.bidRaised({
+    required String id,
+    required DateTime occurredAt,
+    required String playerId,
+    required int bid,
+    required int clockExtensionSeconds,
+  }) {
+    return AuctionEvent._(
+      id: id,
+      type: AuctionEventType.bidRaised,
+      occurredAt: occurredAt,
+      playerId: playerId,
+      amount: bid,
+      clockExtensionSeconds: clockExtensionSeconds,
     );
   }
 
@@ -107,12 +134,14 @@ class AuctionEvent {
     required String id,
     required DateTime occurredAt,
     required String targetEventId,
+    int clockExtensionSeconds = 0,
   }) {
     return AuctionEvent._(
       id: id,
       type: AuctionEventType.eventReverted,
       occurredAt: occurredAt,
       targetEventId: targetEventId,
+      clockExtensionSeconds: clockExtensionSeconds,
     );
   }
 
@@ -124,8 +153,11 @@ class AuctionEvent {
       if (playerId != null) 'player_id': playerId,
       if (teamId != null) 'team_id': teamId,
       if (amount != null) 'amount': amount,
+      if (clockExtensionSeconds != null)
+        'clock_extension_seconds': clockExtensionSeconds,
       if (targetEventId != null) 'target_event_id': targetEventId,
       if (note != null) 'note': note,
+      if (serverRevision != null) 'server_revision': serverRevision,
     };
   }
 
@@ -148,8 +180,11 @@ class AuctionEvent {
       playerId: json['player_id']?.toString(),
       teamId: json['team_id']?.toString(),
       amount: (json['amount'] as num?)?.toInt(),
+      clockExtensionSeconds:
+          (json['clock_extension_seconds'] as num?)?.toInt(),
       targetEventId: json['target_event_id']?.toString(),
       note: json['note']?.toString(),
+      serverRevision: (json['server_revision'] as num?)?.toInt(),
     );
   }
 }
