@@ -31,20 +31,25 @@ class _AuctionSharingSheetState extends ConsumerState<AuctionSharingSheet> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(_createInvite);
+    Future.microtask(_loadInvite);
   }
 
-  Future<void> _createInvite() async {
+  Future<void> _loadInvite() async {
     if (mounted) {
       setState(() {
         _loadingInvite = true;
         _error = null;
       });
     }
+
     try {
-      final invite = await ref
-          .read(auctionSharingRepositoryProvider)
-          .createInvite(sessionId: widget.session.id);
+      final current = await ref.read(
+        currentAuctionShareInviteProvider(widget.session.id).future,
+      );
+      final invite = current ??
+          await ref
+              .read(auctionSharingRepositoryProvider)
+              .createInvite(sessionId: widget.session.id);
       if (!mounted) return;
       setState(() {
         _invite = invite;
@@ -156,7 +161,7 @@ class _AuctionSharingSheetState extends ConsumerState<AuctionSharingSheet> {
               loading: _loadingInvite,
               error: _error,
               onCopy: _copyCode,
-              onRegenerate: _createInvite,
+              onRetry: _loadInvite,
             ),
             const SizedBox(height: 20),
             Text(
@@ -265,14 +270,14 @@ class _InviteCodeCard extends StatelessWidget {
   final bool loading;
   final String? error;
   final VoidCallback onCopy;
-  final VoidCallback onRegenerate;
+  final VoidCallback onRetry;
 
   const _InviteCodeCard({
     required this.invite,
     required this.loading,
     required this.error,
     required this.onCopy,
-    required this.onRegenerate,
+    required this.onRetry,
   });
 
   @override
@@ -293,7 +298,7 @@ class _InviteCodeCard extends StatelessWidget {
                     Text(error!, textAlign: TextAlign.center),
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
-                      onPressed: onRegenerate,
+                      onPressed: onRetry,
                       icon: const Icon(Icons.refresh_rounded),
                       label: const Text('Riprova'),
                     ),
@@ -310,23 +315,16 @@ class _InviteCodeCard extends StatelessWidget {
                             letterSpacing: 2,
                           ),
                     ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Il codice resta valido mentre gestisci le richieste di ingresso.',
+                      textAlign: TextAlign.center,
+                    ),
                     const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.center,
-                      children: [
-                        FilledButton.icon(
-                          onPressed: onCopy,
-                          icon: const Icon(Icons.copy_rounded),
-                          label: const Text('Copia codice'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: onRegenerate,
-                          icon: const Icon(Icons.autorenew_rounded),
-                          label: const Text('Rigenera'),
-                        ),
-                      ],
+                    FilledButton.icon(
+                      onPressed: onCopy,
+                      icon: const Icon(Icons.copy_rounded),
+                      label: const Text('Copia codice'),
                     ),
                   ],
                 ),
@@ -346,7 +344,7 @@ class _NoRequests extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
       ),
       child: const Text(
-        'Nessuna richiesta. Condividi il codice e lascia aperta questa schermata per approvare i partecipanti.',
+        'Nessuna richiesta. Condividi il codice; quando qualcuno chiede accesso comparirà qui.',
         textAlign: TextAlign.center,
       ),
     );
