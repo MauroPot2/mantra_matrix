@@ -58,8 +58,6 @@ service cloud.firestore {
         request.resource.data.member_uids is list &&
         request.auth.uid in request.resource.data.member_uids;
 
-      // Le query dell'owner possono essere vincolate da owner_uid, mentre le
-      // query delle aste condivise possono essere vincolate da member_uids.
       allow read: if signedIn() && (
         resource.data.owner_uid == request.auth.uid ||
         (
@@ -81,8 +79,6 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // Stato effimero e minimale dell'asta. I membri lo osservano, ma solo
-      // l'owner/controller può produrre mutazioni autorevoli.
       match /live/{liveDocument} {
         allow read: if isSessionMember(sessionId);
         allow create, update: if isSessionOwner(sessionId);
@@ -96,17 +92,45 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
-      // Token di invito e altri metadati privati non devono diventare
-      // leggibili ai viewer dopo il join.
       match /private/{privateDocument} {
         allow read, create, update, delete: if isSessionOwner(sessionId);
       }
     }
 
-    // Protocollo di join a due fasi:
-    // 1) chi possiede un invito valido crea una richiesta pending;
-    // 2) solo l'owner indicato può approvarla/rifiutarla;
-    // 3) l'aggiunta a member_uids resta una write owner-only sulla sessione.
+    // Codice umano di ingresso. È consentito soltanto un GET puntuale al
+    // documento conosciuto: nessuna query/list permette di enumerare codici.
+    match /auction_invite_codes/{entryCode} {
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn() &&
+        entryCode.size() == 8 &&
+        request.resource.data.keys().hasOnly([
+          'owner_uid',
+          'session_id',
+          'token',
+          'enabled',
+          'created_at',
+          'updated_at'
+        ]) &&
+        request.resource.data.owner_uid == request.auth.uid &&
+        request.resource.data.session_id is string &&
+        request.resource.data.session_id.size() > 0 &&
+        isSessionOwner(request.resource.data.session_id) &&
+        request.resource.data.token is string &&
+        request.resource.data.token.size() >= 32 &&
+        request.resource.data.enabled == true &&
+        request.resource.data.created_at == request.time &&
+        request.resource.data.updated_at == request.time;
+
+      // Un codice viene rigenerato creando un nuovo documento e cancellando
+      // quello precedente. Evitiamo update parziali difficili da auditare.
+      allow update: if false;
+      allow delete: if signedIn() &&
+        resource.data.owner_uid == request.auth.uid &&
+        isSessionOwner(resource.data.session_id);
+    }
+
     match /auction_join_requests/{requestId} {
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly([
