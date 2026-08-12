@@ -8,6 +8,8 @@ abstract class AuctionSharingRepository {
 
   Future<String> requestAccess({required AuctionShareInvite invite});
 
+  Future<String> requestAccessByCode({required String entryCode});
+
   Stream<List<AuctionJoinRequest>> watchPendingRequests();
 
   Stream<AuctionJoinRequest?> watchRequest({required String requestId});
