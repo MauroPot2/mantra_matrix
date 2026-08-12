@@ -58,13 +58,22 @@ service cloud.firestore {
         request.resource.data.member_uids is list &&
         request.auth.uid in request.resource.data.member_uids;
 
-      allow read: if signedIn() && (
+      // I GET puntuali possono usare i dati reali del documento.
+      allow get: if signedIn() && (
         resource.data.owner_uid == request.auth.uid ||
         (
           resource.data.member_uids is list &&
           request.auth.uid in resource.data.member_uids
         )
       );
+
+      // Le query sono valutate contro il loro possibile result set. Teniamo
+      // separati owner e membership per evitare che un campo non vincolato
+      // nel query plan renda undefined l'altro ramo della condizione OR.
+      allow list: if signedIn() &&
+        resource.data.owner_uid == request.auth.uid;
+      allow list: if signedIn() &&
+        request.auth.uid in resource.data.member_uids;
 
       allow update: if isSessionOwner(sessionId) &&
         request.resource.data.owner_uid == resource.data.owner_uid &&
