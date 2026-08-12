@@ -152,6 +152,21 @@ test('owner query by owner_uid and name ordering is allowed', async () => {
   }
 });
 
+test('shared session query by member_uids array-contains is allowed', async () => {
+  const bob = env.authenticatedContext('bob').firestore();
+  const sharedSessions = query(
+    collection(bob, 'auction_sessions'),
+    where('member_uids', 'array-contains', 'bob'),
+  );
+
+  const snapshot = await assertSucceeds(getDocs(sharedSessions));
+  if (snapshot.size !== 1 || snapshot.docs[0].id !== 'session-1') {
+    throw new Error(
+      `Expected only session-1 for bob, got ${snapshot.docs.map((doc) => doc.id).join(', ')}.`,
+    );
+  }
+});
+
 test('session members can read while outsiders cannot', async () => {
   const bob = env.authenticatedContext('bob').firestore();
   const charlie = env.authenticatedContext('charlie').firestore();
