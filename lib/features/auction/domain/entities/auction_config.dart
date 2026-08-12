@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:mantra_matrix/features/auction/domain/entities/auction_strategy.dart';
 import 'package:mantra_matrix/features/player_database/domain/entities/player_entities.dart';
 
+enum AuctionCallMode { manual, random }
+
 class AuctionConfig {
   /// Budget reale della lega.
   final int initialCredits;
@@ -20,6 +22,9 @@ class AuctionConfig {
 
   /// Secondi aggiunti al countdown per ogni rilancio verso l'alto.
   final int bidExtensionSeconds;
+
+  /// Come viene scelto il prossimo giocatore da chiamare.
+  final AuctionCallMode callMode;
 
   /// Strategia tattica scelta nel setup.
   final String primaryFormationName;
@@ -41,6 +46,7 @@ class AuctionConfig {
     this.targetCoverage = const {},
     this.countdownSeconds = 15,
     this.bidExtensionSeconds = 5,
+    this.callMode = AuctionCallMode.manual,
     this.primaryFormationName = '4-2-3-1',
     this.secondaryFormationNames = const {'4-3-3', '4-4-2'},
     this.departmentBudgets = const {},
@@ -58,6 +64,8 @@ class AuctionConfig {
        assert(maxPlayerBudgetShare > 0 && maxPlayerBudgetShare <= 1);
 
   double get valuationScale => initialCredits / valuationReferenceCredits;
+
+  bool get usesRandomDraw => callMode == AuctionCallMode.random;
 
   int scaleCatalogValue(int catalogValue) {
     if (catalogValue <= 0) return minimumBid;
@@ -90,6 +98,7 @@ class AuctionConfig {
     int minimumBid = 1,
     int countdownSeconds = 15,
     int bidExtensionSeconds = 5,
+    AuctionCallMode callMode = AuctionCallMode.manual,
     String primaryFormationName = '4-2-3-1',
     Set<String> secondaryFormationNames = const {'4-3-3', '4-4-2'},
     Map<PlayerDepartment, int>? departmentBudgets,
@@ -101,6 +110,7 @@ class AuctionConfig {
       minimumBid: minimumBid,
       countdownSeconds: countdownSeconds,
       bidExtensionSeconds: bidExtensionSeconds,
+      callMode: callMode,
       primaryFormationName: primaryFormationName,
       secondaryFormationNames: Set.unmodifiable(secondaryFormationNames),
       departmentBudgets: Map.unmodifiable(
@@ -132,6 +142,7 @@ class AuctionConfig {
     int minimumBid = 1,
     int countdownSeconds = 15,
     int bidExtensionSeconds = 5,
+    AuctionCallMode callMode = AuctionCallMode.manual,
     String primaryFormationName = '4-2-3-1',
     Set<String> secondaryFormationNames = const {'4-3-3', '4-4-2'},
     Map<PlayerDepartment, int>? departmentBudgets,
@@ -143,6 +154,7 @@ class AuctionConfig {
       minimumBid: minimumBid,
       countdownSeconds: countdownSeconds,
       bidExtensionSeconds: bidExtensionSeconds,
+      callMode: callMode,
       primaryFormationName: primaryFormationName,
       secondaryFormationNames: secondaryFormationNames,
       departmentBudgets: departmentBudgets,
@@ -171,6 +183,7 @@ class AuctionConfig {
     Map<MantraRole, int>? targetCoverage,
     int? countdownSeconds,
     int? bidExtensionSeconds,
+    AuctionCallMode? callMode,
     String? primaryFormationName,
     Set<String>? secondaryFormationNames,
     Map<PlayerDepartment, int>? departmentBudgets,
@@ -188,6 +201,7 @@ class AuctionConfig {
       countdownSeconds: countdownSeconds ?? this.countdownSeconds,
       bidExtensionSeconds:
           bidExtensionSeconds ?? this.bidExtensionSeconds,
+      callMode: callMode ?? this.callMode,
       primaryFormationName:
           primaryFormationName ?? this.primaryFormationName,
       secondaryFormationNames:
@@ -210,6 +224,7 @@ class AuctionConfig {
       'minimum_bid': minimumBid,
       'countdown_seconds': countdownSeconds,
       'bid_extension_seconds': bidExtensionSeconds,
+      'call_mode': callMode.name,
       'target_coverage': {
         for (final entry in targetCoverage.entries)
           entry.key.name: entry.value,
@@ -259,6 +274,12 @@ class AuctionConfig {
         ? rawSecondary.map((item) => item.toString()).toSet()
         : const {'4-3-3', '4-4-2'};
 
+    final callModeName = json['call_mode']?.toString();
+    final callMode = AuctionCallMode.values.firstWhere(
+      (mode) => mode.name == callModeName,
+      orElse: () => AuctionCallMode.manual,
+    );
+
     return AuctionConfig(
       initialCredits: initialCredits,
       valuationReferenceCredits:
@@ -269,6 +290,7 @@ class AuctionConfig {
           (json['countdown_seconds'] as num?)?.toInt() ?? 15,
       bidExtensionSeconds:
           (json['bid_extension_seconds'] as num?)?.toInt() ?? 5,
+      callMode: callMode,
       targetCoverage: coverage,
       primaryFormationName:
           json['primary_formation_name']?.toString() ?? '4-2-3-1',
