@@ -34,3 +34,15 @@ final auctionJoinRequestProvider = StreamProvider.autoDispose
       .watch(auctionSharingRepositoryProvider)
       .watchRequest(requestId: requestId);
 });
+
+final auctionSessionOwnershipProvider =
+    FutureProvider.autoDispose.family<bool, String>((ref, sessionId) async {
+  final uid = ref.watch(currentUserUidProvider);
+  if (uid == null) return false;
+  final document = await ref
+      .watch(firebaseFirestoreProvider)
+      .collection('auction_sessions')
+      .doc(sessionId)
+      .get();
+  return document.data()?['owner_uid']?.toString() == uid;
+});
