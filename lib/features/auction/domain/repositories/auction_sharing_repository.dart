@@ -2,10 +2,7 @@ import 'package:mantra_matrix/features/auction/domain/entities/auction_session_s
 import 'package:mantra_matrix/features/auction/domain/entities/auction_sharing.dart';
 
 abstract class AuctionSharingRepository {
-  Future<AuctionShareInvite> createInvite({
-    required String sessionId,
-    bool regenerate = false,
-  });
+  Future<AuctionShareInvite> createInvite({required String sessionId});
 
   Future<void> disableSharing({required String sessionId});
 
