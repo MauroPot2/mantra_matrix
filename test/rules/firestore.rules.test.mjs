@@ -21,6 +21,7 @@ import {
 
 const projectId = 'demo-asta-matrix-rules';
 const validInviteToken = 'abcdefghijklmnopqrstuvwxyz123456';
+const validEntryCode = '7K9MP4QX';
 let env;
 
 before(async () => {
@@ -67,8 +68,16 @@ beforeEach(async () => {
         session_id: 'session-2',
         enabled: true,
         token: validInviteToken,
+        entry_code: validEntryCode,
       },
     );
+
+    await setDoc(doc(db, 'auction_invite_codes', validEntryCode), {
+      owner_uid: 'alice',
+      session_id: 'session-2',
+      token: validInviteToken,
+      enabled: true,
+    });
 
     await setDoc(doc(db, 'auction_sessions', 'session-charlie'), {
       owner_uid: 'charlie',
@@ -253,6 +262,37 @@ test('invite secret remains owner-only even for session members', async () => {
       token: 'malicious-token-that-is-long-enough',
     }),
   );
+});
+
+test('known human invite code supports direct get but cannot be enumerated', async () => {
+  const bob = env.authenticatedContext('bob').firestore();
+
+  const snapshot = await assertSucceeds(
+    getDoc(doc(bob, 'auction_invite_codes', validEntryCode)),
+  );
+  if (snapshot.data()?.session_id !== 'session-2') {
+    throw new Error('Entry code did not resolve the expected session.');
+  }
+
+  await assertFails(getDocs(collection(bob, 'auction_invite_codes')));
+});
+
+test('viewer cannot create, update or delete human invite codes', async () => {
+  const bob = env.authenticatedContext('bob').firestore();
+  const knownRef = doc(bob, 'auction_invite_codes', validEntryCode);
+
+  await assertFails(
+    setDoc(doc(bob, 'auction_invite_codes', 'ABCDEFGH'), {
+      owner_uid: 'bob',
+      session_id: 'session-2',
+      token: '0123456789abcdefghijklmnopqrstuv',
+      enabled: true,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    }),
+  );
+  await assertFails(updateDoc(knownRef, { enabled: false }));
+  await assertFails(deleteDoc(knownRef));
 });
 
 test('join request is private to requester and owner', async () => {
